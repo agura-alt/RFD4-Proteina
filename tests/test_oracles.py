@@ -233,6 +233,86 @@ def test_validate_inter_residue_bonds_extra_raises(lencapavir_design_with_covale
         AF3Oracle._validate_inter_residue_bonds(aa, af3)
 
 
+@pytest.fixture
+def design_with_disulfide() -> AtomArray:
+    """Single chain carrying one inter-residue disulfide (CYS 1 SG -- CYS 5 SG).
+
+    Mirrors a conditioned target crop: the bridge is a real covalent bond declared in the
+    input, and AF3's output CIF is known to omit it from the bond block.
+    """
+    aa = AtomArray(4)
+    aa.chain_id = np.array(["A", "A", "A", "A"])
+    aa.res_id = np.array([1, 1, 5, 5])
+    aa.res_name = np.array(["CYS", "CYS", "CYS", "CYS"])
+    aa.atom_name = np.array(["CB", "SG", "CB", "SG"])
+    aa.element = np.array(["C", "S", "C", "S"])
+    aa.coord = np.array(
+        [[0.0, 0.0, 0.0], [1.8, 0.0, 0.0], [3.84, 0.0, 0.0], [2.04, 0.0, 0.0]], dtype=np.float32
+    )
+    aa.bonds = struc.BondList(
+        4,
+        np.array(
+            [
+                [0, 1, int(struc.BondType.SINGLE)],  # CB--SG, intra-residue
+                [2, 3, int(struc.BondType.SINGLE)],  # CB--SG, intra-residue
+                [1, 3, int(struc.BondType.SINGLE)],  # SG--SG, the disulfide
+            ]
+        ),
+    )
+    return aa
+
+
+def _drop_disulfide(aa: AtomArray) -> AtomArray:
+    """Return a copy with the inter-residue SG--SG bond removed, as AF3's output arrives."""
+    af3 = aa.copy()
+    bonds = af3.bonds.as_array()
+    is_disulfide = (af3.atom_name[bonds[:, 0]] == "SG") & (af3.atom_name[bonds[:, 1]] == "SG")
+    af3.bonds = struc.BondList(af3.array_length(), bonds[~is_disulfide])
+    return af3
+
+
+def test_validate_inter_residue_bonds_tolerates_dropped_disulfide(design_with_disulfide, caplog):
+    """AF3 omitting an input disulfide from its bond block is a warning, not a discarded refold.
+
+    Regression for the 2026-11-18 cysteine-rich target failure: every design lost its refolded
+    CIF, which silently took out all five design-vs-refold metrics and left three pass criteria
+    indeterminate while the confidence JSONs were written as usual.
+    """
+    aa = design_with_disulfide
+    af3 = _drop_disulfide(aa)
+
+    with caplog.at_level("WARNING"):
+        AF3Oracle._validate_inter_residue_bonds(aa, af3)
+
+    assert "did not re-declare" in caplog.text, "a tolerated drop must still be logged, never swallowed"
+
+
+def test_validate_inter_residue_bonds_dropped_disulfide_plus_other_bond_raises(design_with_disulfide):
+    """The carve-out covers disulfides only: another dropped bond alongside one still raises."""
+    aa = design_with_disulfide.copy()
+    # Add a second inter-residue bond that is not a disulfide, then drop both on the AF3 side.
+    aa.bonds = struc.BondList(
+        aa.array_length(),
+        np.array(aa.bonds.as_array().tolist() + [[0, 2, int(struc.BondType.SINGLE)]]),  # CB--CB
+    )
+    af3 = aa.copy()
+    bonds = af3.bonds.as_array()
+    intra = af3.res_id[bonds[:, 0]] == af3.res_id[bonds[:, 1]]
+    af3.bonds = struc.BondList(af3.array_length(), bonds[intra])
+
+    with pytest.raises(ValueError, match="inter-residue bond graph"):
+        AF3Oracle._validate_inter_residue_bonds(aa, af3)
+
+
+def test_validate_inter_residue_bonds_extra_disulfide_raises(design_with_disulfide):
+    """The carve-out is one-directional: a disulfide AF3 *invented* is still a hard failure."""
+    aa = _drop_disulfide(design_with_disulfide)  # input has no disulfide
+    af3 = design_with_disulfide  # AF3 added one
+
+    with pytest.raises(ValueError, match="inter-residue bond graph"):
+        AF3Oracle._validate_inter_residue_bonds(aa, af3)
+
+
 def test_disambiguate_chain_ids():
     """Chains sharing chain_id but differing by chain_iid receive distinct chain IDs."""
     aa = AtomArray(6)
