@@ -71,6 +71,44 @@ def _min_distance(a: struc.AtomArray, b: struc.AtomArray) -> float:
     return float(np.sqrt((diff**2).sum(-1)).min())
 
 
+def _renumber_sequentially(arr: struc.AtomArray) -> struc.AtomArray:
+    """Renumber residues 1..N in order and clear insertion codes.
+
+    ``get_residue_starts`` treats a change of insertion code as a residue boundary, so 52
+    and 52A stay distinct here and simply become consecutive numbers.
+    """
+    out = arr.copy()
+    starts = struc.get_residue_starts(out, add_exclusive_stop=True)
+    new_ids = np.zeros(out.array_length(), dtype=int)
+    for i in range(len(starts) - 1):
+        new_ids[starts[i] : starts[i + 1]] = i + 1
+    out.res_id = new_ids
+    if "ins_code" in out.get_annotation_categories():
+        out.set_annotation("ins_code", np.full(out.array_length(), "", dtype="U1"))
+    return out
+
+
+def _assert_unambiguous(arr: struc.AtomArray) -> None:
+    """Fail here, with the offenders named, rather than inside the CIF writer at fold time."""
+    ins = (
+        arr.get_annotation("ins_code")
+        if "ins_code" in arr.get_annotation_categories()
+        else np.full(arr.array_length(), "")
+    )
+    keys = list(zip(arr.chain_id, arr.res_id, arr.res_name, arr.atom_name, ins, strict=True))
+    seen: set = set()
+    dupes: list = []
+    for key in keys:
+        (dupes.append(key) if key in seen else seen.add(key))
+    if dupes:
+        shown = ", ".join(str(d) for d in dupes[:5])
+        raise ValueError(
+            f"{len(dupes)} atom(s) share a (chain_id, res_id, res_name, atom_name, ins_code) "
+            f"identifier, e.g. {shown}. atomworks' CIF writer rejects this, so AF3 would never "
+            "run. Usually insertion codes that were dropped or collapsed."
+        )
+
+
 def main() -> int:
     if not SOURCE_PDB.is_file():
         print(f"FAIL: {SOURCE_PDB} not found")
@@ -148,8 +186,18 @@ def main() -> int:
         )
 
     # --- write the control input ----------------------------------------
+    # The nanobody is antibody-numbered with insertion codes (52A, 82A-C, 100A-D -- the same
+    # 8 insertions the 1G8 config calls out). Those collide the moment ins_code is dropped:
+    # residue 52 and 52A both become res_id 52, and atomworks' CIF writer refuses the file
+    # with "Ambiguous chain annotations detected" before AF3 ever runs. Renumber the chain
+    # sequentially and clear the codes. Nothing downstream depends on the binder's numbering
+    # -- the oracle folds it from sequence and min_ipae is a scalar over the interface -- so
+    # this costs nothing. The target keeps its own numbering, which carries no insertions.
+    nanobody = _renumber_sequentially(nanobody)
     nanobody.chain_id = np.full(nanobody.array_length(), BINDER_CHAIN_OUT)
     complex_aa = target + nanobody
+
+    _assert_unambiguous(complex_aa)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     cif = pdbx.CIFFile()
