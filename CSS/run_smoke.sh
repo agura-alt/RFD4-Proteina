@@ -19,7 +19,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 export PROJECT_ROOT="$PWD"
 
-CONFIG_DIR="$PROJECT_ROOT/CSS"
+CONFIG_DIR="$PROJECT_ROOT/CSS/configs"
 CONFIG_NAME="css_cdr123_L204CD2_L206CD2_Y246CE1_generate"
 INPUT_DIR="$PROJECT_ROOT/CSS/inputs/cifs_L204CD2_L206CD2_Y246CE1"
 STAMP="$(date +%Y%m%d_%H%M%S)"
@@ -28,8 +28,13 @@ STAMP="$(date +%Y%m%d_%H%M%S)"
 # reused directory silently keeps the previous run's structures and you end up
 # auditing stale results (AGENTS.md: use fresh output directories when changing
 # settings).
-STAGE0_DIR="$PROJECT_ROOT/runs/smoke_${STAMP}/stage0"
-STAGE1_DIR="$PROJECT_ROOT/runs/smoke_${STAMP}/stage1"
+# On a cluster do NOT leave this inside the repo: configs/inference.yaml says to
+# set an external path for production, and 12 designs plus 24 AF3 refolds will
+# fill a home filesystem. Point SMOKE_ROOT at scratch, e.g.
+#   export SMOKE_ROOT=/net/scratch/$USER/css_cdr123_L204CD2_L206CD2_Y246CE1
+SMOKE_ROOT="${SMOKE_ROOT:-$PROJECT_ROOT/runs}"
+STAGE0_DIR="$SMOKE_ROOT/smoke_${STAMP}/stage0"
+STAGE1_DIR="$SMOKE_ROOT/smoke_${STAMP}/stage1"
 
 # Shared overrides.
 #   seed            pinned so a failure is reproducible while you debug it

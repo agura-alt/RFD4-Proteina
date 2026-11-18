@@ -18,7 +18,7 @@ from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_DIR = ROOT / "CSS"
+CONFIG_DIR = ROOT / "CSS" / "configs"
 CONFIG_NAME = "css_cdr123_L204CD2_L206CD2_Y246CE1_generate"
 
 # Tags the runtime adds per refold; included so refolding metrics resolve as they
