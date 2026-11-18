@@ -1,0 +1,266 @@
+# @package _global_
+# Campaign css_1g8pin, combo 1G8_cdr123_L13-10-14_D166OD2_Q241NE2_Y246OH.
+#
+# LENGTH-PINNED POSITIVE CONTROL. Identical to ../css_1g8_D166OD2_Q241NE2_Y246OH/ except
+# that the three CDR sentinels are pinned to 1G8's own native loop lengths instead of
+# sampling the lab template's authored windows:
+#
+#     loop   authored window   pinned   native sequence
+#     CDR1       11-16           13     AASGRTFSGYSMA
+#     CDR2        8-12           10     SINWSGSRTN
+#     CDR3        8-22           14     AARLLSKLGGQYDY
+#
+# Those native lengths are read with (label_seq_id, pdbx_PDB_ins_code): VHH_1G8.cif is
+# antibody-numbered with insertions 52A, 82A-C and 100A-D, and keying on label_seq_id
+# alone silently collapses them and yields a wrong 13/9/10. The chain has 124 CA atoms
+# across 116 distinct label_seq_id values; the 8 extras are exactly those insertions.
+#
+# Why pin: the unpinned run (2026-11-12, jobs 32643187/32643188, 100 designs) drew the
+# native length triple 0/100 times -- expected ~0.22, since lengths are sampled uniformly
+# and independently from 6 x 5 x 15 = 450 combinations. So it never tested whether RFD4
+# can rebuild 1G8's actual paratope; it only tested whether the 1G8 framework helps
+# (it did not: every gate statistically indistinguishable from the four de novo arms).
+# Pinning collapses those 450 combinations to 1, so all 100 designs land on the
+# geometry the crystal structure says works.
+#
+# Sentinel SEQUENCE stays free -- only length is fixed. expsegmin == expsegmax is a
+# genuine pin, not a narrowing: realize_expandable_segments draws
+# `rng.integers(seg_min, seg_max + 1)`, which returns seg_min when they are equal.
+#
+# The CDR boundaries are the lab template's authored ones and are deliberately NOT
+# adjusted. They place the native CDR1 'AA' and CDR3 'AAR' inside the designed loop
+# rather than in framework, which is a Kabat-boundary quibble -- but it is identical
+# across all four pilot frameworks, so leaving it keeps the comparison clean.
+#
+# 1G8 is a nanobody with a solved structure against this very antigen
+# (1G8-PTRAMP-CSS.pdb), and this epitope was picked from its own contacts. The run asks
+# one question: given the real binder's framework and its real epitope, does unguided RFD4
+# generation reach the gates that four de novo VHH frameworks did not?
+#
+# It is a copy of
+#   ../css_pilot_D166OD2_Q241NE2_Y246OH/css_pilot_vobarilizumab_cdr123_D166OD2_Q241NE2_Y246OH_generate.yaml
+# with THREE lines changed -- inputs, out_dir, run_name -- so that every number it produces is
+# comparable with the 400-design pilot of 2026-11-09 (jobs 32382554/57/59/61). Checkpoint pair,
+# recycling schedule, replicate count, batch size, metric set and all four pass criteria are
+# byte-identical to that run. Do not "improve" anything here without rerunning the pilot too.
+#
+# The 1G8 framework's dock against the target is NOT conditioned: chain H sits in its own
+# internal-coordinate group (CoordinateGroup 1, 336 backbone atoms) with
+# condition_coordinate_1_atom NaN throughout, exactly as the four pilot frameworks do. The
+# template's live coordinates happen to be the crystallographic ones, which is cosmetic --
+# only intra-group geometry is conditioned, and the model samples the placement from noise.
+defaults:
+  - inference_on_user_inputs
+  # PPI medium preset: 180 total trunk passes over 60 sampling steps
+  # (docs/how-to/run-the-model.md recycling-schedules table).
+  #
+  # This MUST be stated. Without it the composed config resolves
+  # `recycle_strategy: None` and `generation.n_recycle: 0` -- zero recycling -- and the
+  # designs do not dock at all: the 2026-11-04 CSS pilot smoke run produced
+  # oracle_ppi.min_ipae_coi of 10.5-24.9 against a 1.2 gate on 12/12 designs, with
+  # min_ipae.all_metrics_present=1.0 confirming those were real measurements of bad
+  # designs rather than missing columns. inference.yaml's own default
+  # (`recycle_strategy: thinking_medium`) does NOT survive composition into an
+  # inference_experiment config, and `thinking_*` are front-loaded aliases rather than
+  # task-aware defaults in any case. Addressed to the `generation` package, which is
+  # where n_recycle lives -- the same form configs/datasets/val/ppi/*.yaml uses.
+  - /recycle_strategy@generation: medium/front_loaded
+  - _self_
+
+inputs: /net/scratch/dlsee/projects/gates/scally/css_1g8pin_D166OD2_Q241NE2_Y246OH/inputs/cifs_crdfix/css_1g8pin_1G8_cdr123_L13-10-14_D166OD2_Q241NE2_Y246OH.cif
+out_dir: /net/scratch/dlsee/projects/gates/scally/css_1g8pin_D166OD2_Q241NE2_Y246OH/designs/1G8_cdr123_L13-10-14_D166OD2_Q241NE2_Y246OH_generate
+run_name: 1G8_cdr123_L13-10-14_D166OD2_Q241NE2_Y246OH_generate
+
+# The latent checkpoint IS pinned here, deliberately. This template used to inherit
+# ckpt_path/ckpt_name from configs/inference.yaml and set only `hf_ckpt_path: null`.
+# That silently stopped working: #792 (947ead6e8, 2026-10-23) changed
+#   ckpt_path: ${oc.env:DATA_PATH}/flow_checkpoints   ->   ckpt_path: null
+# so with hf_ckpt_path nulled and nothing else set, every job now dies ~36 s in with
+#   ValueError: Set ckpt_path and ckpt_name when hf_ckpt_path=null ...
+# (observed on 4/4 CSS pilot smoke jobs, 2026-11-04, jobs 31468403/19/21/23).
+# Inheriting a default that moves under the campaign is the failure mode, so the flow
+# checkpoint AND its matching autoencoder are both named explicitly from here on --
+# the AE especially, because the release bumped the flow ckpt and the AE together and
+# a half-matched pair would load without complaint.
+#
+# `hf_ckpt_path` must still be nulled. inference.yaml sets it to the gated Hub repo
+# `nvidia/RFD4-Proteina`, and load_ckpt_n_configure_inference branches on it BEFORE
+# reading ckpt_path/ckpt_name ("takes precedence over ckpt_path/name", inference.yaml:14).
+# Left set, the run either loads the Hub bundle or dies on a 401 with no Hub token --
+# and any local checkpoint choice is silently ignored. It arrived in 156a0452c (#619),
+# after the y1r sweep, which is why the y1r-era template has no such line.
+#
+# The antibody LoRA checkpoint (2026_08_10_antibody_lora_finetune_100k-ema.ckpt) can NOT
+# be used on this checkout: its saved feats_seq requests `x_sc_bb_ca`, which #486
+# (e8d76ea44, 2026-09-16) removed from nn/feature_factory.py. It loads only on a
+# pre-#486 checkout, which is how the y1r sweep ran it.
+hf_ckpt_path: null
+
+# The current release pair, chosen 2026-11-04. NOT the pair the 2026-10-10 PTRAMP designs
+# ran on (chk_epoch_00000169_step_000000340000-ema.ckpt + 2026_09_04_release_ae_z16_400k-ema.ckpt),
+# so metrics from this campaign are not bit-comparable with those designs. Both pairs are
+# on disk under $DATA_PATH; this is the one configs/inference.yaml currently names.
+ckpt_path: ${oc.env:DATA_PATH}/flow_checkpoints
+ckpt_name: rfd4-proteina-flow-release-2026-10-19.ckpt
+autoencoder_ckpt_path: ${oc.env:DATA_PATH}/ae_checkpoints/rfd4-proteina-ae-release-2026-10-19.ckpt
+
+num_replicates: 100
+batch_size: 2
+
+# apo_refolding activates `oracle_apo` from configs/metrics/refolding_oracles/af3.yaml, which
+# folds the designed chain alone; ppi_refolding supplies the holo half. Both are needed for the
+# apo/holo comparisons below -- an unpaired apo oracle just drops those columns silently.
+# `nanobody_geometry` is INERT and is kept only so this tag list is byte-identical to the pilot's.
+# It was carried in from the y1r sweep believing it activated cdr_framework_contact_ratio and
+# contact_molecular_surface_proxy. Neither metric exists in this repo and no preset in
+# configs/metrics/ declares that tag, so it selects nothing and emits no column -- verified by
+# grep over configs/metrics/ and by the pilot's own output, which has no such columns in
+# per_example_metrics.csv. Harmless, but do not read it as geometry coverage.
+# `cms` (TorchCMS ContactMolecularSurfaceMetric, which IS real -- preset
+# `contact_molecular_surface`, design_metrics.yaml:98) is deliberately NOT set: on a gpu:small
+# (19.5 GiB) it OOMs against the two AF3 refolds this config runs -- observed 2026-09-03,
+# job 21814978, 10/10 designs failed on that metric alone while every other metric passed.
+# It accepts `device: cpu`, which sidesteps the OOM without a gpu:large reservation; left off
+# here only because the pilot ran without it and this run must stay comparable.
+metrics_tags: [design, interchain_interactions, ppi_refolding, apo_refolding, nanobody_geometry,
+               hotspot_conditioning]
+
+metrics:
+  # A refold is addressable by its oracle's config key (`oracle_ppi`) and, when it is the only
+  # untransformed refold, by the alias `untransformed`. The explicit key is used here: the alias
+  # is withdrawn if a second untransformed oracle ever becomes active.
+  refolding_metrics:
+    refolded_backbone_rmsd:
+      required_tags_all: ["is_refold:oracle_ppi"]
+    # Target/binder are addressed by chain, not by `sa_mask('C_CRD')`. A design OUTPUT carries
+    # no absolute-coordinate annotation at all: the antigen comes back as CoordinateGroup -1 with
+    # no C_CRD column, so `sa_mask('C_CRD')` selects 0 atoms and the repo's own align masks pick
+    # an empty set. align_structures_with_masks then returns (None, None) *silently* and the
+    # metric emits no column. The binder is always chain H in these frameworks.
+    refolded_target_aligned_binder_rmsd:
+      align_mask: "(chain_id != 'H') & is_protein"
+      subset_mask: "(chain_id == 'H') & is_protein"
+      required_tags_all: ["is_refold:oracle_ppi"]
+    # Required by the repo's `ppi` pass criterion (all_pass_criteria.yaml). Left at its authored
+    # C_CRD-based align mask it never produces a value, and `ppi.pass` is then structurally 0 for
+    # every design regardless of quality.
+    refolded_target_backbone_aligned_binder_rmsd:
+      align_mask: "(chain_id != 'H') & is_protein_backbone"
+      subset_mask: "(chain_id == 'H') & is_protein"
+      required_tags_all: ["is_refold:oracle_ppi"]
+    refolded_apo_holo_rmsd:
+      align_mask: "(chain_id == 'H') & is_protein_backbone"
+      subset_mask: "(chain_id == 'H') & is_protein_backbone"
+      input_kwarg_names:
+        ground_truth_atom_array: refold.oracle_apo.apo
+        predicted_atom_array: refold.oracle_ppi
+      required_tags_all: ["is_refold:oracle_apo.apo", "exists_refold:oracle_ppi"]
+    refolded_apo_holo_cdr_rmsd:
+      _target_: rfproteina.metrics.gt_structure_comparison.StructureComparisonMetric
+      align_mask: "(chain_id == 'H') & is_protein_backbone & sa_mask('C_SEQ')"
+      subset_mask: "(chain_id == 'H') & is_protein_backbone & ~sa_mask('C_SEQ')"
+      metric_type: rmsd
+      aggregation: [median]
+      input_kwarg_names:
+        ground_truth_atom_array: refold.oracle_apo.apo
+        predicted_atom_array: refold.oracle_ppi
+      required_tags_all: ["is_refold:oracle_apo.apo", "exists_refold:oracle_ppi"]
+
+  pre_oracle_filters: null
+
+  # TMol-based interface ddG (rfproteina has no real PyRosetta metric -- the pyrosetta conda env
+  # is broken anyway, see rfd4_ppi skill notes). No required_tags_any set on the preset, so it
+  # always runs once listed here, regardless of metrics_tags above. Default region_a/region_b
+  # (omitted) makes the binder chain-of-interest vs. everything else the interface pair -- correct
+  # for this sweep's single-binder-chain nanobody/target combos.
+  # `ppi_interface_ddg` (TMolBlockPairMetric) is DELIBERATELY NOT configured here.
+  #
+  # It was carried over from the y1r sweep with strict_ligands/raise_on_dropped_residues
+  # relaxed so the unparameterisable NAG could not hard-fail it. On this checkout it fails
+  # for a different reason that those flags do not cover:
+  #   Computing 'ppi_interface_ddg' (TMolBlockPairMetric) for example '...':
+  #   Coordinate group 0 must match absolute coordinate conditioning; modify C_CRD first.
+  # and a raising inline metric takes EVERY inline metric for that design down with it:
+  #   Metrics failed for css_pilot_caplacizumab_cdr123_D166OD2_Q241NE2_Y246OH_rep0_job0: ...
+  # On the 2026-11-04 smoke run that cost `hotspot_obedience`, `interchain_interactions`
+  # and the `nanobody_geometry` proxies on 12/12 designs, which in turn left
+  # `hotspot_adherence.all_metrics_present = 0` -- the hotspot gate scoring every design
+  # indeterminate rather than pass/fail. ddG feeds no pass criterion, so it was buying
+  # nothing and breaking a gate this campaign actually filters on. Re-add it only after
+  # the C_CRD complaint is understood, and re-smoke the inline metric columns if you do.
+
+  refolding_oracles:
+    # Only the campaign-specific threshold is set here. `_target_`, `oracle_name`,
+    # `template_query`, `aggregation` and `required_tags_any` are inherited from
+    # configs/metrics/refolding_oracles/af3.yaml, which already defines oracle_ppi --
+    # restating them froze a stale `template_query: "mask_coordinate_1_atom"`, and raw
+    # annotation column names no longer resolve in an AtomWorks query. The current form
+    # is `sa_mask('C_CRD')`; the repo's own value is
+    #   "(sa_mask('C_CRD') | sa_mask('C_INTCRD')) & is_protein"
+    # which also correctly templates the internal-coordinate (framework) atoms that the
+    # raw-column version missed entirely. Inherit it rather than copy it.
+    oracle_ppi:
+      # Repo default is [1, 1.5, 2]; this campaign scores the fraction under 1.2.
+      frac_under_thresholds:
+        min_ipae_coi: [1.2]
+
+  pass_criteria:
+    min_ipae:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        oracle_ppi.min_ipae_coi:
+          max: 1.2
+      required_tags_any: [ppi_refolding]
+
+    # hotspot_obedience is an inline (design-phase) metric, so its value reaches pass criteria
+    # through the merged design metrics context (metrics_utils.py:306). It inherits
+    # max_hotspot_distance: 4.5 from configs/metrics/inline_metrics/design_metrics.yaml -- an
+    # all-heavy-atom nearest-neighbour criterion between each conditioned target atom and any
+    # binder atom, not a CA-CA distance. The design outputs carry no hydrogens, so all-atom and
+    # heavy-atom coincide.
+    # This target has 3 hotspots (A/166 ASP OD2, A/241 GLN NE2, A/246 TYR OH), so min: 1.0
+    # requires all three in contact. That is a real target, not an aspirational one: the user has
+    # a crystal structure of a different nanobody contacting all three at <= 3.5 A, and the gate
+    # here is a more permissive 4.5 A.
+    #
+    # The raw pairwise hotspot distances look forbidding and are NOT the right test:
+    #   Q241.NE2 <-> Y246.OH    8.56 A
+    #   D166.OD2 <-> Y246.OH   16.24 A
+    #   D166.OD2 <-> Q241.NE2  19.87 A
+    # Those distances only rule out one RESIDUE bridging the set. Three CDRs reach three
+    # different atoms, so the question is whether the atoms lie on one coverable surface patch.
+    # Measured 2026-11-09 from the input CIF, they do:
+    #   angular separation of outward vectors from the antigen centroid: 14.3 / 27.1 / 37.5 deg
+    #     -- all three on the same face, max spread 37.5 deg
+    #   minimal enclosing circle: 19.87 A diameter -- inside a VHH paratope's ~20-25 A span
+    #   burial proxy (antigen heavy atoms within 8 A): 34 / 40 / 48 -- all solvent-exposed
+    # Apply the >12 A triad-spread heuristic only after this co-accessibility check; raw
+    # pairwise distance alone will reject reachable epitopes.
+    #
+    # Score per-hotspot offline regardless: a pooled obedience average hides WHICH atom a
+    # failing design dropped, and that is the actionable number.
+    hotspot_adherence:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        hotspot_obedience.hotspot_obedience:
+          min: 1.0
+      required_tags_any: [hotspot_conditioning]
+
+    # Apo/holo self-consistency: does the designed binder reach the bound pose on its own?
+    # No repo preset gates this -- all_pass_criteria.yaml has no apo criterion at all -- yet over
+    # 40,000 E270 designs the campaign medians are 4.09 A overall and 5.58 A CDR, and agreement
+    # degrades monotonically with CDR3 length (Spearman +0.31 overall, +0.32 CDR, p ~ 0). Ungated,
+    # the iPAE gate admits designs whose apo prediction misses the holo pose by 6-9 A: of the 11
+    # designs clearing hotspot + RMSD <= 5 + iPAE <= 1.2, only 4 survive this criterion.
+    # refolded_apo_holo_cdr_rmsd aligns on the framework (sa_mask('C_SEQ')) and measures the
+    # designed loops; refolded_apo_holo_rmsd aligns on the whole binder backbone. The `.apo.`
+    # infix is the refold name (oracle_apo.apo), not an aggregation. 2.0 A is not a knife edge --
+    # the surviving set is identical for any threshold in 1.5-3.0 A.
+    apo_holo_consistency:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        refolded_apo_holo_rmsd.apo.rmsd:
+          max: 2.0
+        refolded_apo_holo_cdr_rmsd.apo.rmsd:
+          max: 2.0
+      required_tags_any: [apo_refolding]
