@@ -55,21 +55,16 @@ inputs: ${oc.env:PROJECT_ROOT}/CSS/inputs/cifs_L204CD2_L206CD2_Y246CE1
 out_dir: ${oc.env:PROJECT_ROOT}/runs/css_cdr123_L204CD2_L206CD2_Y246CE1
 run_name: css_cdr123_L204CD2_L206CD2_Y246CE1_generate
 
-# The latent checkpoint IS pinned here, deliberately. This template used to inherit
-# ckpt_path/ckpt_name from configs/inference.yaml and set only `hf_ckpt_path: null`.
-# That silently stopped working: #792 (947ead6e8, 2026-10-23) changed
-#   ckpt_path: ${oc.env:DATA_PATH}/flow_checkpoints   ->   ckpt_path: null
-# so with hf_ckpt_path nulled and nothing else set, every job now dies ~36 s in with
-#   ValueError: Set ckpt_path and ckpt_name when hf_ckpt_path=null ...
-# Inheriting a default that moves under the campaign is the failure mode, so the flow
-# checkpoint AND its matching autoencoder are both named explicitly from here on --
-# the AE especially, because the release bumped the flow ckpt and the AE together and
-# a half-matched pair would load without complaint.
-hf_ckpt_path: null
-
-ckpt_path: ${oc.env:DATA_PATH}/flow_checkpoints
-ckpt_name: rfd4-proteina-flow-release-2026-10-19.ckpt
-autoencoder_ckpt_path: ${oc.env:DATA_PATH}/ae_checkpoints/rfd4-proteina-ae-release-2026-10-19.ckpt
+# Checkpoint: inherited from configs/inference.yaml on purpose. It selects the release
+# flow/AE pair from the Hugging Face Hub (`hf_ckpt_path`) at the commit pinned in
+# `hf_ckpt_revision`, so the pair is matched and reproducible, and no DATA_PATH or local
+# checkpoint files are needed. This is the same path the default quickstart example uses.
+#
+# History: this file used to null `hf_ckpt_path` and name native checkpoints under
+# ${DATA_PATH} explicitly, because a native-checkpoint default had moved under the campaign
+# (#792, 2026-10-23). That is only needed on a cluster with the native checkpoints on disk.
+# To go back to native files, set `hf_ckpt_path: null` and name ckpt_path, ckpt_name and
+# autoencoder_ckpt_path together; a half-matched flow/AE pair loads without complaint.
 
 num_replicates: 100
 batch_size: 2

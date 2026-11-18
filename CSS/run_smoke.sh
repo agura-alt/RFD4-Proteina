@@ -12,7 +12,8 @@
 # pass rate; they exist to prove the gates are determinate before you spend 400.
 #
 # Run from the repository root, with the rfproteina environment active and
-# DATA_PATH pointing at the checkpoints.
+# network access to the Hugging Face Hub (checkpoints come from the pinned hf_ckpt_path
+# in configs/inference.yaml; no DATA_PATH needed).
 
 set -euo pipefail
 
