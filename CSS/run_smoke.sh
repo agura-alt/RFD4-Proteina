@@ -21,9 +21,17 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 export PROJECT_ROOT="$PWD"
 
 CONFIG_DIR="$PROJECT_ROOT/CSS/configs"
-CONFIG_NAME="css_cdr123_L204CD2_L206CD2_Y246CE1_generate"
+# Overridable so a sibling arm can reuse this script instead of forking it; the
+# defaults are the fixed-hotspot medium arm, i.e. plain `bash CSS/run_smoke.sh`
+# behaves exactly as before. CSS/run_smoke_hotspot_patch.sh sets these.
+#   SMOKE_CONFIG_NAME      config in CSS/configs to compose
+#   SMOKE_EXPECTED_PASSES  trunk passes the preflight should see (arm's recycle preset)
+#   SMOKE_LABEL            prefix on the output directory, so arms do not collide
+CONFIG_NAME="${SMOKE_CONFIG_NAME:-css_cdr123_L204CD2_L206CD2_Y246CE1_generate}"
+EXPECTED_PASSES="${SMOKE_EXPECTED_PASSES:-180}"
 INPUT_DIR="$PROJECT_ROOT/CSS/inputs/cifs_L204CD2_L206CD2_Y246CE1"
 STAMP="$(date +%Y%m%d_%H%M%S)"
+RUN_TAG="${SMOKE_LABEL:+${SMOKE_LABEL}_}${STAMP}"
 
 # Fresh output directories every time. `skip_existing` defaults to true, so a
 # reused directory silently keeps the previous run's structures and you end up
@@ -34,8 +42,8 @@ STAMP="$(date +%Y%m%d_%H%M%S)"
 # fill a home filesystem. Point SMOKE_ROOT at scratch, e.g.
 #   export SMOKE_ROOT=/net/scratch/$USER/css_cdr123_L204CD2_L206CD2_Y246CE1
 SMOKE_ROOT="${SMOKE_ROOT:-$PROJECT_ROOT/runs}"
-STAGE0_DIR="$SMOKE_ROOT/smoke_${STAMP}/stage0"
-STAGE1_DIR="$SMOKE_ROOT/smoke_${STAMP}/stage1"
+STAGE0_DIR="$SMOKE_ROOT/smoke_${RUN_TAG}/stage0"
+STAGE1_DIR="$SMOKE_ROOT/smoke_${RUN_TAG}/stage1"
 
 # Shared overrides.
 #   seed            pinned so a failure is reproducible while you debug it
@@ -73,10 +81,11 @@ assert_designs() {
 }
 
 echo "############ Preflight: config + metric selection, no GPU ############"
+echo "config: $CONFIG_NAME  (expecting $EXPECTED_PASSES passes)"
 # Static check: composes the config and resolves which metrics the tag list
 # selects, using the same rule the runtime applies. Costs seconds and catches a
 # mis-addressed recycle_strategy or a dead tag before anything is scheduled.
-python CSS/preflight_metric_selection.py
+python CSS/preflight_metric_selection.py "$CONFIG_NAME" "$EXPECTED_PASSES"
 
 echo
 echo "############ Stage 0: plumbing, 1 design ############"
