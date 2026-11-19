@@ -61,7 +61,7 @@ from atomworks.io.utils.annotator import ensure_annotations
 from atomworks.io.utils.atom_array_plus import as_atom_array_plus
 from atomworks.io.utils.io_utils import to_cif_file
 from atomworks.ml.conditions import C_IDX, C_SEQ
-from biotite.structure import BondType, get_residue_starts
+from biotite.structure import BondType
 from rfproteina.conditions_reporting import summarize_conditions
 from rfproteina.utils.parse_presets import ANNOTATED_CIF
 
@@ -146,10 +146,26 @@ def load_native_binder():
     # insertion-code change as a boundary, so the two stay distinct and become consecutive.
     # Nothing downstream reads the binder's numbering: the oracle folds it from sequence and
     # every mask that touches it addresses the chain, not residue ids.
-    starts = get_residue_starts(binder, add_exclusive_stop=True)
+    # Boundaries computed explicitly from (res_id, ins_code), and the residue count asserted.
+    # Merging 52 with 52A is catastrophic and invisible: the two residues' atoms land in one
+    # residue, the chain drops from 124 residues to 116 -- exactly the 8 insertions the 1G8
+    # config counts -- and AF3 folds the mangled sequence to nonsense (pLDDT 39.6 on a
+    # canonical VHH, observed 2026-11-18) while every pass criterion still reports a number.
+    keys = list(zip(binder.res_id, ins, strict=True))
+    n_before = len(set(keys))
     new_ids = np.zeros(binder.array_length(), dtype=int)
-    for i in range(len(starts) - 1):
-        new_ids[starts[i] : starts[i + 1]] = i + 1
+    current, previous = 0, None
+    for i, key in enumerate(keys):
+        if key != previous:
+            current += 1
+            previous = key
+        new_ids[i] = current
+    if current != n_before:
+        raise ValueError(
+            f"renumbering produced {current} residues from {n_before}; atoms of one residue "
+            "are not contiguous, so renumbering would merge distinct residues"
+        )
+    print(f"  renumbered {n_before} residues 1..{current}, insertion codes cleared")
     binder.res_id = new_ids
     if "ins_code" in binder.get_annotation_categories():
         binder.set_annotation("ins_code", np.full(binder.array_length(), "", dtype="U1"))

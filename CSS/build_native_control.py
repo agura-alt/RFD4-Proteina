@@ -74,14 +74,37 @@ def _min_distance(a: struc.AtomArray, b: struc.AtomArray) -> float:
 def _renumber_sequentially(arr: struc.AtomArray) -> struc.AtomArray:
     """Renumber residues 1..N in order and clear insertion codes.
 
-    ``get_residue_starts`` treats a change of insertion code as a residue boundary, so 52
-    and 52A stay distinct here and simply become consecutive numbers.
+    Boundaries are computed explicitly from (res_id, ins_code) rather than delegated, because
+    silently merging 52 with 52A is catastrophic and invisible: the two residues' atoms land
+    in one residue, the chain loses 8 of its 124 residues, and AF3 is handed a mangled
+    sequence that it folds to nonsense (pLDDT 39.6 on a canonical VHH, observed 2026-11-18)
+    while every pass criterion still reports a number. The residue count is asserted below for
+    the same reason.
     """
     out = arr.copy()
-    starts = struc.get_residue_starts(out, add_exclusive_stop=True)
+    ins = (
+        out.get_annotation("ins_code")
+        if "ins_code" in out.get_annotation_categories()
+        else np.full(out.array_length(), "")
+    )
+    keys = list(zip(out.chain_id, out.res_id, ins, strict=True))
+    n_before = len(set(keys))
+
     new_ids = np.zeros(out.array_length(), dtype=int)
-    for i in range(len(starts) - 1):
-        new_ids[starts[i] : starts[i + 1]] = i + 1
+    current = 0
+    previous = None
+    for i, key in enumerate(keys):
+        if key != previous:
+            current += 1
+            previous = key
+        new_ids[i] = current
+
+    if current != n_before:
+        raise ValueError(
+            f"renumbering produced {current} residues from {n_before}; atoms of one residue "
+            "are not contiguous, so renumbering would merge distinct residues"
+        )
+
     out.res_id = new_ids
     if "ins_code" in out.get_annotation_categories():
         out.set_annotation("ins_code", np.full(out.array_length(), "", dtype="U1"))
