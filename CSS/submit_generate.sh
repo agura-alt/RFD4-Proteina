@@ -31,6 +31,33 @@
 #   sbatch CSS/submit_generate.sh num_replicates=1 out_dir=$PWD/runs/submit_test
 #   sbatch --time=12:00:00 CSS/submit_generate.sh        # override a directive
 #
+# Which arm: CONFIG_NAME picks the config in CSS/configs. sbatch exports the submitting
+# environment by default (--export=ALL), so prefixing the variable is enough. The arms write
+# to different out_dirs already, so they do not collide; give each its own job name and log
+# files or three runs land in one %A-numbered pile:
+#
+#   C=css_cdr123_L204CD2_L206CD2_Y246CE1
+#   for arm in _generate _hotspotadd_generate _hotspotswap_generate; do
+#       CONFIG_NAME="$C$arm" sbatch --job-name="css$arm" \
+#           --output="slurm_run_outputs/css${arm}_%A_%a.out" \
+#           --error="slurm_run_outputs/css${arm}_%A_%a.err" \
+#           CSS/submit_generate.sh
+#   done
+#
+# The hotspot arms draw their conditioning per replicate, so `seed` decides which atoms each
+# design gets. The configs do not pin one; pass seed=<n> if the draws must be reproducible.
+# SMOKE=1 pins seed=42 for you.
+#
+# Size: a plain submission runs the arm as configured -- 100 replicates x 4 inputs = 400
+# designs and 800 AF3 refolds. SMOKE=1 runs stage 1 of CSS/run_smoke.sh instead (3 replicates
+# x 4 inputs = 12 designs, batch size 1, verbose, prevalidated, a fresh out_dir), then gates
+# on the design count and runs CSS/audit_smoke_metrics.py on the result:
+#
+#   SMOKE=1 CONFIG_NAME="${C}_hotspotadd_generate" sbatch --time=01:00:00 CSS/submit_generate.sh
+#
+# Shorten --time to match: the 4h default is sized for the production run. Any override you
+# pass yourself wins over the smoke defaults, so `SMOKE=1 ... num_replicates=6` gives six.
+#
 # Resuming: submit again with the SAME out_dir. `skip_existing` defaults to true, so designs
 # already written are skipped, and refolds whose confidence JSON exists are not repeated. That
 # makes a short --time plus a resubmit a reasonable alternative to one long reservation. Note
@@ -88,17 +115,131 @@ if [ ! -e "$AF3_IMAGE" ]; then
     exit 1
 fi
 
+# Fail on a bad arm name here, not after Hydra has loaded a checkpoint.
+CONFIG_FILE="$PWD/CSS/configs/${CONFIG_NAME}.yaml"
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "FAIL: no such config: $CONFIG_FILE" >&2
+    echo "      Available:" >&2
+    ls "$PWD/CSS/configs" >&2
+    exit 1
+fi
+
+# The hotspot-sampling arms instantiate a transform per replicate. Two ways that costs a
+# whole allocation if it is wrong, both caught in seconds here:
+#   * KeepSeedHotspots lives under src/rfproteina/transforms/sampling/, which .gitignore:9
+#     excludes. The module is force-added so a `git pull` brings it, but the directory is
+#     still ignored, and a checkout without it kills the add arm on import at the first batch;
+#   * SampleNearbyHotspots raises rather than reducing the count when the patch cannot fit
+#     the requested hotspots on these inputs.
+# This also reports whether the seeds are kept or replaced, which is the difference between
+# the add and swap arms and is otherwise invisible in the run's own output.
+if grep -q "sampling_transforms" "$CONFIG_FILE"; then
+    echo "############ sampling arm: hotspot preflight ############"
+    python CSS/preflight_hotspot_patch.py 10 --config "$CONFIG_NAME"
+    echo
+fi
+
+# >>> smoke args -- extracted and unit-tested by CSS/test_submit_smoke_args.sh
+# SMOKE=1 turns this into stage 1 of CSS/run_smoke.sh as a batch job: 3 replicates over the
+# 4 inputs, batch size 1, a fresh out_dir, and the column audit afterwards. Without it the
+# arms run at their configured size -- 100 replicates x 4 inputs = 400 designs and 800 AF3
+# refolds, which is a production run, not a check that the plumbing works.
+#
+# Anything you pass explicitly wins: each default is added only if that key is absent from
+# the arguments, because Hydra is not relied on to resolve a duplicated override.
+smoke_enabled() { case "${SMOKE:-0}" in 1 | true | TRUE | yes | YES) return 0 ;; *) return 1 ;; esac; }
+
+has_override() {
+    local key="$1" arg
+    shift
+    for arg in "$@"; do
+        [ "${arg%%=*}" = "$key" ] && return 0
+    done
+    return 1
+}
+
+build_smoke_args() {
+    # Sets SMOKE_ARGS, SMOKE_OUT_DIR and SMOKE_EXPECTED from the caller's arguments.
+    SMOKE_ARGS=()
+    SMOKE_OUT_DIR=""
+    SMOKE_EXPECTED=0
+    local arg
+    if has_override num_replicates "$@"; then
+        # Their number, so this script cannot say how many designs to expect.
+        :
+    else
+        SMOKE_ARGS+=(num_replicates=3)
+        SMOKE_EXPECTED=12  # 3 replicates x 4 inputs
+        # Under --array the 12 are split across tasks, so one task's share is smaller and an
+        # expectation of 12 would fail every task. Only "something was produced" holds then.
+        [ "${NJOBS:-1}" -gt 1 ] && SMOKE_EXPECTED=1
+    fi
+    has_override batch_size "$@" || SMOKE_ARGS+=(batch_size=1)
+    has_override seed "$@" || SMOKE_ARGS+=(seed=42)
+    has_override verbose "$@" || SMOKE_ARGS+=(verbose=true)
+    has_override prevalidate_inputs "$@" || SMOKE_ARGS+=(prevalidate_inputs=true)
+    if has_override out_dir "$@"; then
+        for arg in "$@"; do
+            [ "${arg%%=*}" = out_dir ] && SMOKE_OUT_DIR="${arg#*=}"
+        done
+    else
+        # Fresh every time. `skip_existing` defaults to true, so a reused directory keeps the
+        # previous run's structures and the audit below would read stale results.
+        SMOKE_OUT_DIR="$PWD/runs/smoke_batch_${CONFIG_NAME}_${SLURM_JOB_ID:-local}_${SLURM_ARRAY_TASK_ID:-0}"
+        SMOKE_ARGS+=("out_dir=$SMOKE_OUT_DIR")
+    fi
+}
+# <<< smoke args
+
+SMOKE_ARGS=()
+SMOKE_OUT_DIR=""
+SMOKE_EXPECTED=0
+if smoke_enabled; then
+    build_smoke_args "$@"
+fi
+
 echo "repo        : $PWD"
 echo "config      : $CONFIG_NAME"
 echo "array task  : ${SLURM_ARRAY_TASK_ID:-0} of $NJOBS"
 echo "AF3 image   : $AF3_IMAGE"
 echo "AF3 daemon  : disabled (direct apptainer path)"
+if smoke_enabled; then
+    echo "size        : SMOKE -- ${SMOKE_ARGS[*]}"
+else
+    echo "size        : the config's own (production; SMOKE=1 for a 12-design check)"
+fi
 echo "overrides   : $*"
 
+# `${a[@]+"${a[@]}"}` because an empty array under `set -u` is an error on bash 4.2, which is
+# what the compute nodes have.
 rfd4-generate \
     --config-path "$PWD/CSS/configs" \
     --config-name "$CONFIG_NAME" \
     save_chain_of_interest=true \
     job_id="${SLURM_ARRAY_TASK_ID:-0}" \
     gen_njobs="$NJOBS" \
+    ${SMOKE_ARGS[@]+"${SMOKE_ARGS[@]}"} \
     "$@"
+
+if smoke_enabled && [ -n "$SMOKE_OUT_DIR" ]; then
+    echo
+    echo "############ Smoke gate: did it really produce structures? ############"
+    # Exiting 0 having produced nothing is this campaign's signature failure -- a bad input
+    # path or an input glob matching no file does exactly that. The audit below would not
+    # notice, since it reads whatever rows exist.
+    n=$(find "$SMOKE_OUT_DIR" -type f \( -name '*.cif' -o -name '*.cif.zst' \) 2>/dev/null | wc -l)
+    if [ "$SMOKE_EXPECTED" -gt 0 ] && [ "$n" -lt "$SMOKE_EXPECTED" ]; then
+        echo "FAIL: produced $n structure file(s), expected at least $SMOKE_EXPECTED" >&2
+        echo "      under $SMOKE_OUT_DIR. The job exited 0, so this would have looked fine." >&2
+        exit 1
+    fi
+    if [ "$n" -lt 1 ]; then
+        echo "FAIL: produced no structure files under $SMOKE_OUT_DIR" >&2
+        exit 1
+    fi
+    echo "ok: $n structure file(s) under $SMOKE_OUT_DIR"
+
+    echo
+    echo "############ Audit: are the metric columns there? ############"
+    python CSS/audit_smoke_metrics.py "$SMOKE_OUT_DIR"
+fi
