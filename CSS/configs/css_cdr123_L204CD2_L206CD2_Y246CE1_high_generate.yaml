@@ -45,6 +45,20 @@
 # control is still unresolved, the result is uninterpretable, which is the argument for having
 # both in flight.
 
+# `hydra.searchpath` only takes effect from the PRIMARY config, and it has to be in place
+# before the defaults list below is resolved. The base config carries the same block, but as
+# an entry in this file's defaults list it is read too late to help: the `/recycle_strategy`
+# group lives in the repo's `configs/`, which is not on the search path until this is set, so
+# the override below fails with "Could not find 'recycle_strategy/high/front_loaded'" and the
+# reported search path holds only CSS/configs. Repeated here for that reason; the base's copy
+# then merges onto an identical value.
+#
+# PROJECT_ROOT must be exported for this to resolve. run_smoke.sh sets it; a manual launch
+# needs `export PROJECT_ROOT=$PWD` (or `PROJECT_ROOT=$PWD` inline) from the repository root.
+hydra:
+  searchpath:
+    - file://${oc.env:PROJECT_ROOT}/configs
+
 defaults:
   - css_cdr123_L204CD2_L206CD2_Y246CE1_generate
   # The base config selects medium/front_loaded; `override` replaces that choice rather than
