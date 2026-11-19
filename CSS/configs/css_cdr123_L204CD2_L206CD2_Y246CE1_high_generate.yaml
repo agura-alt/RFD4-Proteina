@@ -1,0 +1,67 @@
+# @package _global_
+#
+# Campaign css_cdr123_L204CD2_L206CD2_Y246CE1, HIGH recycling arm. 100 designs.
+#
+# One variable changes against the medium arm: 300 trunk passes instead of 180. Everything
+# else -- inputs, checkpoint pair, metric set, pass criteria, batch size -- is inherited from
+# that config rather than copied, so the two arms cannot drift apart and there is one place to
+# edit a metric.
+#
+# Why this arm exists
+# -------------------
+# The 2026-11-18 medium smoke run (12 designs) produced oracle_ppi.min_ipae_coi of 15.8-24.5
+# against a 1.2 gate, interface iptm 0.07-0.17, and AF3 placing the binder 25-63 A from its
+# designed pose on 12/12. The design side was clean -- conditioning obeyed to 0.13 A, hotspots
+# contacted on 7/12, no clashes -- so the generator did what it was told and the refold did not
+# agree.
+#
+# Running more designs at 180 passes repeats that experiment. This arm tests the one lever the
+# medium config itself flags:
+#
+#   "OPEN QUESTION, deliberately left at medium: the repo's own antibody work picks
+#    high/front_loaded (300 passes) -- examples/antibody_design/common.yaml and its README
+#    both do. [...] If this campaign underperforms, raise this before concluding anything
+#    about the frameworks."
+#
+# It has underperformed, so this raises it. `high/front_loaded` is also the documented PPI
+# High preset (docs/how-to/run-the-model.md recycling-schedules table, 300 passes over 60
+# steps), so this is the task's own next step up, not an invented setting.
+#
+# Why 100 and not 400
+# -------------------
+# The question this run answers is whether the iPAE distribution moves toward the gate at all,
+# and 100 designs answer that nearly as well as 400 at a quarter the cost. 300 passes costs
+# roughly 1.7x the generation time of 180 per design, so 100 designs here is about what 170
+# would have cost on the medium arm. Oracle cost is unchanged per design (two AF3 refolds).
+# Scale to 400 only once something clears a gate, or once the gate itself is calibrated.
+#
+# What this run does NOT settle
+# -----------------------------
+# Whether min_ipae <= 1.2 is reachable on this target at all. The native 1G8 complex is the
+# control for that (CSS/build_native_control_annotated.py and
+# css_native_control_evaluate.yaml); its numbers so far were measured on a binder AF3 could
+# not fold and are void. The two are independent -- the control is a single AF3 call -- so run
+# them in parallel rather than gating this on it. If this arm also returns 0/100 and the
+# control is still unresolved, the result is uninterpretable, which is the argument for having
+# both in flight.
+
+defaults:
+  - css_cdr123_L204CD2_L206CD2_Y246CE1_generate
+  # The base config selects medium/front_loaded; `override` replaces that choice rather than
+  # adding a second entry for the same group. Addressed to the `generation` package, as there,
+  # because n_recycle lives there. Verify with:
+  #   python CSS/preflight_metric_selection.py css_cdr123_L204CD2_L206CD2_Y246CE1_high_generate 300
+  # which resolves the composed schedule and fails if it is not 60 steps / 300 passes. Do not
+  # skip it: a recycle_strategy that fails to compose leaves generation.n_recycle at 0 and the
+  # designs do not dock, which is exactly how the 2026-11-04 run was lost.
+  - override /recycle_strategy@generation: high/front_loaded
+  - _self_
+
+# num_replicates is PER INPUT, and there are four frameworks, so 25 x 4 = 100 designs.
+# Matched across frameworks on purpose: the medium arm's apo pTM split -- vobarilizumab and
+# h-NbBCII10 folding well alone (82-88), caplacizumab and ozoralizumab erratic (25-77) -- came
+# from three designs each and is worth either confirming or dismissing at 25.
+num_replicates: 25
+
+out_dir: ${oc.env:PROJECT_ROOT}/runs/css_cdr123_L204CD2_L206CD2_Y246CE1_high
+run_name: css_cdr123_L204CD2_L206CD2_Y246CE1_high_generate

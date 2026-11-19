@@ -6,12 +6,16 @@ a checkpoint, or an AF3 call. Answers "did adding the `antibody` tag really turn
 anything on" before you spend a smoke run finding out.
 
 Usage, from the repository root:
-    python CSS/preflight_metric_selection.py
+    python CSS/preflight_metric_selection.py [config_name] [expected_passes]
+
+Defaults to the medium arm and 180 passes. The high arm is checked with:
+    python CSS/preflight_metric_selection.py css_cdr123_L204CD2_L206CD2_Y246CE1_high_generate 300
 """
 
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from hydra import compose, initialize_config_dir
@@ -19,7 +23,9 @@ from omegaconf import OmegaConf
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_DIR = ROOT / "CSS" / "configs"
-CONFIG_NAME = "css_cdr123_L204CD2_L206CD2_Y246CE1_generate"
+DEFAULT_CONFIG_NAME = "css_cdr123_L204CD2_L206CD2_Y246CE1_generate"
+DEFAULT_EXPECTED_PASSES = 180  # PPI medium/front_loaded
+EXPECTED_STEPS = 60  # every preset in the docs table uses 60 sampling steps
 
 # Tags the runtime adds per refold; included so refolding metrics resolve as they
 # would once both oracles have run.
@@ -53,11 +59,15 @@ def matches(entry, tags: set[str]) -> bool:
 
 
 def main() -> int:
+    config_name = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_CONFIG_NAME
+    expected_passes = int(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_EXPECTED_PASSES
+
     os.environ.setdefault("PROJECT_ROOT", str(ROOT))
     os.environ.setdefault("DATA_PATH", "/unused/for/preflight")
 
+    print(f"config: {config_name}  (expecting {EXPECTED_STEPS} steps / {expected_passes} passes)\n")
     with initialize_config_dir(config_dir=str(CONFIG_DIR), version_base=None):
-        cfg = compose(config_name=CONFIG_NAME)
+        cfg = compose(config_name=config_name)
 
     tags = set(OmegaConf.to_container(cfg.metrics_tags))
     print("metrics_tags:")
@@ -72,10 +82,14 @@ def main() -> int:
     print(f"\nrecycling: {steps} sampling steps, {passes} total trunk passes")
     print(f"    schedule (steps, recycles): {[tuple(x) for x in schedule]}")
     print(f"    generation.args.nsteps = {gen.args.nsteps}")
-    if passes == 180 and steps == 60:
-        print("    ok -- matches PPI medium/front_loaded from the docs table")
+    recycling_ok = passes == expected_passes and steps == EXPECTED_STEPS
+    if recycling_ok:
+        print(f"    ok -- {EXPECTED_STEPS} steps / {expected_passes} passes, as expected")
     else:
-        print("    WARNING -- does not match medium/front_loaded (60 steps / 180 passes)")
+        print(
+            f"    WARNING -- expected {EXPECTED_STEPS} steps / {expected_passes} passes. "
+            "Check the recycle_strategy override composed."
+        )
     if not schedule:
         print("    FAIL -- empty schedule means zero recycling; the designs will not dock")
 
@@ -114,6 +128,14 @@ def main() -> int:
             problems.append(name)
 
     print("\n" + "=" * 60)
+    if not recycling_ok:
+        # Non-zero so a launcher gating on this does not proceed. A recycle_strategy that
+        # fails to compose leaves generation.n_recycle at 0, and the designs do not dock.
+        print(
+            f"Recycling resolved to {steps} steps / {passes} passes, not "
+            f"{EXPECTED_STEPS}/{expected_passes}. Fix this before spending GPU time."
+        )
+        return 1
     if problems:
         print("These expected metrics resolve to OFF: " + ", ".join(problems))
         return 1
