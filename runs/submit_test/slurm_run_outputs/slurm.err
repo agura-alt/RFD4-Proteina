@@ -1,0 +1,99 @@
+Environment variable CCD_MIRROR_PATH not set. Will not be able to use function requiring this variable. To set it you may:
+  (1) add the line 'export VAR_NAME=path/to/variable' to your .bashrc or .zshrc file
+  (2) set it in your current shell with 'export VAR_NAME=path/to/variable'
+  (3) write it to a .env file in the root of the atomworks.io repository
+Environment variable PDB_MIRROR_PATH not set. Will not be able to use function requiring this variable. To set it you may:
+  (1) add the line 'export VAR_NAME=path/to/variable' to your .bashrc or .zshrc file
+  (2) set it in your current shell with 'export VAR_NAME=path/to/variable'
+  (3) write it to a .env file in the root of the atomworks.io repository
+/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+Fetching 2 files:   0%|          | 0/2 [00:00<?, ?it/s]Fetching 2 files: 100%|██████████| 2/2 [00:00<00:00, 249.30it/s]
+Environment variable CCD_MIRROR_PATH not set. Will not be able to use function requiring this variable. To set it you may:
+  (1) add the line 'export VAR_NAME=path/to/variable' to your .bashrc or .zshrc file
+  (2) set it in your current shell with 'export VAR_NAME=path/to/variable'
+  (3) write it to a .env file in the root of the atomworks.io repository
+Environment variable PDB_MIRROR_PATH not set. Will not be able to use function requiring this variable. To set it you may:
+  (1) add the line 'export VAR_NAME=path/to/variable' to your .bashrc or .zshrc file
+  (2) set it in your current shell with 'export VAR_NAME=path/to/variable'
+  (3) write it to a .env file in the root of the atomworks.io repository
+Environment variable CCD_MIRROR_PATH not set. Will not be able to use function requiring this variable. To set it you may:
+  (1) add the line 'export VAR_NAME=path/to/variable' to your .bashrc or .zshrc file
+  (2) set it in your current shell with 'export VAR_NAME=path/to/variable'
+  (3) write it to a .env file in the root of the atomworks.io repository
+Environment variable PDB_MIRROR_PATH not set. Will not be able to use function requiring this variable. To set it you may:
+  (1) add the line 'export VAR_NAME=path/to/variable' to your .bashrc or .zshrc file
+  (2) set it in your current shell with 'export VAR_NAME=path/to/variable'
+  (3) write it to a .env file in the root of the atomworks.io repository
+/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+Environment variable CCD_MIRROR_PATH not set. Will not be able to use function requiring this variable. To set it you may:
+  (1) add the line 'export VAR_NAME=path/to/variable' to your .bashrc or .zshrc file
+  (2) set it in your current shell with 'export VAR_NAME=path/to/variable'
+  (3) write it to a .env file in the root of the atomworks.io repository
+Environment variable PDB_MIRROR_PATH not set. Will not be able to use function requiring this variable. To set it you may:
+  (1) add the line 'export VAR_NAME=path/to/variable' to your .bashrc or .zshrc file
+  (2) set it in your current shell with 'export VAR_NAME=path/to/variable'
+  (3) write it to a .env file in the root of the atomworks.io repository
+Error executing job with overrides: ['num_replicates=1', 'out_dir=/u/agurajapu/RFD4-Proteina/runs/submit_test', 'save_chain_of_interest=true', 'out_dir=/u/agurajapu/RFD4-Proteina/runs/submit_test', 'hardware.ngpus_per_node_=1', 'hardware.nnodes_=1', 'job_id=0', 'gen_njobs=1']
+Traceback (most recent call last):
+  File "/u/agurajapu/RFD4-Proteina/src/rfproteina/utils/verbosity.py", line 166, in wrapped
+    return function(cfg, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/src/rfproteina/generate.py", line 790, in main_hydra
+    run_generation(cfg, job_id=job_id)
+  File "/u/agurajapu/RFD4-Proteina/src/rfproteina/utils/verbosity.py", line 166, in wrapped
+    return function(cfg, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/src/rfproteina/generate.py", line 733, in run_generation
+    trainer.validate(model, dataloader)  # validation_step automatically saves outputs
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/lightning/pytorch/trainer/trainer.py", line 702, in validate
+    return call._call_and_handle_interrupt(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/lightning/pytorch/trainer/call.py", line 49, in _call_and_handle_interrupt
+    return trainer_fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/lightning/pytorch/trainer/trainer.py", line 745, in _validate_impl
+    results = self._run(model, ckpt_path=ckpt_path, weights_only=weights_only)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/lightning/pytorch/trainer/trainer.py", line 1079, in _run
+    results = self._run_stage()
+              ^^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/lightning/pytorch/trainer/trainer.py", line 1116, in _run_stage
+    return self._evaluation_loop.run()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/lightning/pytorch/loops/utilities.py", line 179, in _decorator
+    return loop_run(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/lightning/pytorch/loops/evaluation_loop.py", line 153, in run
+    return self.on_run_end()
+           ^^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/lightning/pytorch/loops/evaluation_loop.py", line 296, in on_run_end
+    self._on_evaluation_epoch_end()
+  File "/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/lightning/pytorch/loops/evaluation_loop.py", line 379, in _on_evaluation_epoch_end
+    call._call_lightning_module_hook(trainer, hook_name)
+  File "/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/lightning/pytorch/trainer/call.py", line 177, in _call_lightning_module_hook
+    output = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/src/rfproteina/proteina.py", line 1307, in on_validation_epoch_end
+    fold_designs_for_oracles(
+  File "/u/agurajapu/RFD4-Proteina/src/rfproteina/metrics/utils/metrics_utils.py", line 626, in fold_designs_for_oracles
+    n_refolded += oracle_metric.fold_batch(jobs)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/src/rfproteina/metrics/oracles/af3_oracle.py", line 544, in fold_batch
+    self._dispatch_fold(manifest_path, daemon_rank, len(pending))
+  File "/u/agurajapu/RFD4-Proteina/src/rfproteina/metrics/oracles/af3_oracle.py", line 567, in _dispatch_fold
+    response = _send_to_daemon(
+               ^^^^^^^^^^^^^^^^
+  File "/u/agurajapu/RFD4-Proteina/src/rfproteina/metrics/oracles/af3_oracle.py", line 151, in _send_to_daemon
+    sock.connect(daemon_sock)
+FileNotFoundError: [Errno 2] No such file or directory
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
+/u/agurajapu/RFD4-Proteina/.venv/lib/python3.12/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+srun: error: gpua054: task 0: Exited with exit code 1
+srun: Terminating StepId=24147097.0

@@ -1,0 +1,18 @@
+{
+  "overall_plddt": 78.89,
+  "overall_pae": 14.8814,
+  "overall_ptm": 52.0,
+  "overall_iptm": 13.0,
+  "ranking_score": 0.21,
+  "fraction_disordered": 0.01,
+  "has_clash": 0.0,
+  "min_ipae_A_1_H_1": 17.05,
+  "iptm_A_1_H_1": 13.0,
+  "plddt_coi": 80.23,
+  "ptm_coi": 83.0,
+  "pae_coi": 4.9778,
+  "ipae_coi": 24.384349999999998,
+  "min_ipae_coi": 17.05,
+  "iptm_coi": 13.0,
+  "chain_of_interest": "H_1"
+}

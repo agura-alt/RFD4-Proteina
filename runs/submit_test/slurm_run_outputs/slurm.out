@@ -1,0 +1,28 @@
+Array task: 0, GPUs per job: 1, total jobs: 1, CPUs per step: 4
+[slurm] scontrol works - auto-requeue enabled
+Running generation with job_id=0 on GPU 0
+[2026-11-18 22:22:12,026][rfproteina.proteina][WARNING] - [rank: 0] Multiple oracle metrics (oracle_ppi, oracle_apo) apply to dataset with tags {'apo_refolding', 'hotspot_conditioning', 'design', '3d_coordinate_conditioning', 'ppi_refolding', 'nanobody_geometry', 'internal_coordinate_conditioning', 'interchain_interactions', 'antibody'}. This is intentional for some inference configs but may indicate a mistake.
+[2026-11-18 22:22:38,381][rfproteina.utils.torch_compile][INFO] - Compiling model for padded length 288 tokens (batch size 2). This may take a few minutes.
+This shape may need recompiling in later runs; set TORCH_COMPILE_CACHE_BLOB to a persistent file path to preserve the cache.
+[2026-11-18 22:22:52,244][rfproteina.nn.modules.openfold_modules.triangular_multiplicative_update][WARNING] - cuEquivariance has no fused compiled inference triangle multiplication for batch=2, n=288, c_z=384, c_hidden=256, bf16=True; using the torch backend.
+[2026-11-18 22:24:00,540][rfproteina.metrics.oracles.af3_oracle][WARNING] - [rank: 0] Some residues on chain A are partially templated. AF3 structural templating only applies to full residues; any partially-templated residue will be fully templated.
+[2026-11-18 22:24:00,648][rfproteina.metrics.oracles.af3_oracle][WARNING] - [rank: 0] Some residues on chain H are partially templated. AF3 structural templating only applies to full residues; any partially-templated residue will be fully templated.
+[2026-11-18 22:24:00,931][rfproteina.metrics.oracles.af3_oracle][WARNING] - [rank: 0] Some residues on chain A are partially templated. AF3 structural templating only applies to full residues; any partially-templated residue will be fully templated.
+[2026-11-18 22:24:01,036][rfproteina.metrics.oracles.af3_oracle][WARNING] - [rank: 0] Some residues on chain H are partially templated. AF3 structural templating only applies to full residues; any partially-templated residue will be fully templated.
+[2026-11-18 22:24:01,312][rfproteina.metrics.oracles.af3_oracle][WARNING] - [rank: 0] Some residues on chain A are partially templated. AF3 structural templating only applies to full residues; any partially-templated residue will be fully templated.
+[2026-11-18 22:24:01,418][rfproteina.metrics.oracles.af3_oracle][WARNING] - [rank: 0] Some residues on chain H are partially templated. AF3 structural templating only applies to full residues; any partially-templated residue will be fully templated.
+[2026-11-18 22:24:01,684][rfproteina.metrics.oracles.af3_oracle][WARNING] - [rank: 0] Some residues on chain A are partially templated. AF3 structural templating only applies to full residues; any partially-templated residue will be fully templated.
+[2026-11-18 22:24:01,790][rfproteina.metrics.oracles.af3_oracle][WARNING] - [rank: 0] Some residues on chain H are partially templated. AF3 structural templating only applies to full residues; any partially-templated residue will be fully templated.
+crunching... 🔢 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2/2 0:01:31 • 0:00:00 0.05it/s 
+Last output converted to chothia 
+
+Last output converted to chothia 
+
+Last output converted to chothia 
+
+Last output converted to chothia 
+
+Last output converted to chothia 
+
+Last output converted to chothia 
+

@@ -1,0 +1,1 @@
+/u/agurajapu/RFD4-Proteina/CSS/native_control/1g8_native_complex.cif

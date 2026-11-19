@@ -1,0 +1,12 @@
+{
+  "overall_plddt": 57.96,
+  "overall_pae": 10.9672,
+  "overall_ptm": 51.0,
+  "ranking_score": 0.51,
+  "fraction_disordered": 0.0,
+  "has_clash": 0.0,
+  "plddt_coi": 57.96,
+  "ptm_coi": 51.0,
+  "pae_coi": 10.9672,
+  "chain_of_interest": "H_1"
+}
