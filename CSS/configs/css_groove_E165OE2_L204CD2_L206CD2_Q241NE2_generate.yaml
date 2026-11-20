@@ -1,0 +1,129 @@
+# @package _global_
+#
+# "Spanning the groove" arm: 4-hotspot epitope, all four VHH frameworks, 1000 designs.
+#
+# REFERENCE CONFIG: css_cdr123_L204CD2_L206CD2_Y246CE1_generate.yaml
+# ------------------------------------------------------------------
+# That file is the direct predecessor of this one -- same four frameworks supplied as a
+# directory, same medium/front_loaded recycling, same metrics and pass criteria. It was
+# chosen over the other two candidates:
+#   - css_cdr123_..._high_generate.yaml      -- high/front_loaded, 25 reps. A budget
+#     escalation, not requested here; AGENTS.md says use the task's MEDIUM preset unless
+#     another budget is asked for, and PPI medium front-loaded is the 120/180/300 schedule.
+#   - css_vobarilizumab_1000_generate.yaml   -- single framework, high recycling, 1000 reps.
+#     Wrong shape: this arm spans all four frameworks.
+#
+# DELTAS vs the reference, and nothing else:
+#   1. inputs           -> the E165OE2_L204CD2_L206CD2_Q241NE2 CIF directory (4 files)
+#   2. out_dir/run_name -> this arm's own tree
+#   3. num_replicates   -> 100 -> 250  (see "Design count" below)
+#   4. compress_outputs -> true, and gen_njobs -> 10. Not in the reference, which runs
+#      at a quarter of this scale; both are adopted from css_vobarilizumab_1000_generate.yaml,
+#      the campaign's other 1000-design run, on the user's instruction 2026-11-19.
+# metrics_tags, every metric, pre_oracle_filters, refolding_oracles, all three pass
+# criteria, batch_size and the recycling preset are byte-identical to the reference.
+#
+# Design count
+# ------------
+# num_replicates is PER INPUT, and `inputs` is a directory of 4 CIFs, so this is
+# 250 designs PER FRAMEWORK = 1000 total. Confirmed 2026-11-19.
+#
+# At this scale, compare against css_vobarilizumab_1000_generate.yaml -- the other
+# 1000-design run in this campaign. That file additionally sets:
+#     compress_outputs: true     # structure footprint at 1000 designs
+#     gen_njobs: 10              # array fan-out
+# NEITHER is set here, because they were not requested and the reference config does
+# not set them. Both are worth considering before submitting: this run writes 1000
+# uncompressed design structures, and gen_njobs governs how the work splits across
+# the scheduler array.
+# See scripts/launch_generate.sh and CSS/submit_generate.sh before submission.
+#
+# Reading hotspot_adherence against the previous arm
+# --------------------------------------------------
+# `hotspot_obedience >= 1.0` means ALL hotspots contacted, and this arm has 4 rather
+# than 3 -- a strictly harder gate. The epitope itself is easier (flatter and tighter
+# than the previous arm: 28.4 deg angular spread vs 57.7, 8.49 A max span vs 13.77).
+# The two effects run in opposite directions. Do not compare this arm's hotspot pass
+# rate to the L204CD2_L206CD2_Y246CE1 arm's without accounting for both.
+# See CSS/inputs/cifs_E165OE2_L204CD2_L206CD2_Q241NE2/REPORT.md, flags 1 and 5.
+#
+
+defaults:
+  - inference
+  - /recycle_strategy@generation: medium/front_loaded
+  - _self_
+
+hydra:
+  searchpath:
+    - file://${oc.env:PROJECT_ROOT}/configs
+
+inputs: ${oc.env:PROJECT_ROOT}/CSS/inputs/cifs_E165OE2_L204CD2_L206CD2_Q241NE2
+out_dir: ${oc.env:PROJECT_ROOT}/runs/css_groove_E165OE2_L204CD2_L206CD2_Q241NE2
+run_name: css_groove_E165OE2_L204CD2_L206CD2_Q241NE2_generate
+
+compress_outputs: true
+gen_njobs: 10
+
+num_replicates: 250
+batch_size: 2
+
+metrics_tags: [design, antibody, interchain_interactions,
+               3d_coordinate_conditioning, internal_coordinate_conditioning,
+               ppi_refolding, apo_refolding, nanobody_geometry,
+               hotspot_conditioning]
+
+metrics:
+  refolding_metrics:
+    refolded_backbone_rmsd:
+      required_tags_all: ["is_refold:oracle_ppi"]
+    refolded_target_aligned_binder_rmsd:
+      align_mask: "(chain_id != 'H') & is_protein"
+      subset_mask: "(chain_id == 'H') & is_protein"
+      required_tags_all: ["is_refold:oracle_ppi"]
+    refolded_target_backbone_aligned_binder_rmsd:
+      align_mask: "(chain_id != 'H') & is_protein_backbone"
+      subset_mask: "(chain_id == 'H') & is_protein"
+      required_tags_all: ["is_refold:oracle_ppi"]
+    refolded_apo_holo_rmsd:
+      align_mask: "(chain_id == 'H') & is_protein_backbone"
+      subset_mask: "(chain_id == 'H') & is_protein_backbone"
+      input_kwarg_names:
+        ground_truth_atom_array: refold.oracle_apo.apo
+        predicted_atom_array: refold.oracle_ppi
+      required_tags_all: ["is_refold:oracle_apo.apo", "exists_refold:oracle_ppi"]
+    refolded_apo_holo_cdr_rmsd:
+      _target_: rfproteina.metrics.gt_structure_comparison.StructureComparisonMetric
+      align_mask: "(chain_id == 'H') & is_protein_backbone & sa_mask('C_SEQ')"
+      subset_mask: "(chain_id == 'H') & is_protein_backbone & ~sa_mask('C_SEQ')"
+      metric_type: rmsd
+      aggregation: [median]
+      input_kwarg_names:
+        ground_truth_atom_array: refold.oracle_apo.apo
+        predicted_atom_array: refold.oracle_ppi
+      required_tags_all: ["is_refold:oracle_apo.apo", "exists_refold:oracle_ppi"]
+  pre_oracle_filters: null
+  refolding_oracles:
+    oracle_ppi:
+      frac_under_thresholds:
+        min_ipae_coi: [1, 1.2, 1.5, 2]
+  pass_criteria:
+    min_ipae:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        oracle_ppi.min_ipae_coi:
+          max: 1.2
+      required_tags_any: [ppi_refolding]
+    hotspot_adherence:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        hotspot_obedience.hotspot_obedience:
+          min: 1.0
+      required_tags_any: [hotspot_conditioning]
+    apo_holo_consistency:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        refolded_apo_holo_rmsd.apo.rmsd:
+          max: 2.0
+        refolded_apo_holo_cdr_rmsd.apo.rmsd:
+          max: 2.0
+      required_tags_any: [apo_refolding]
