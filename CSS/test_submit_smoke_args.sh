@@ -19,10 +19,22 @@ if [ -z "$BLOCK" ]; then
     echo "FAIL: could not find the smoke-args markers in $SCRIPT" >&2
     exit 1
 fi
-# The block is pure function definitions; CONFIG_NAME is the only outside name it reads.
+# The block is pure function definitions; CONFIG_NAME and CONFIG_FILE are the only outside
+# names it reads.
 CONFIG_NAME="css_test_arm"
 PWD_SAVED="$PWD"
 eval "$BLOCK"
+
+# Fixtures for count_inputs: a four-input arm (a directory of CIFs) and a single-input
+# depth probe. Real files, because count_inputs resolves the path on disk.
+FIXTURES="$(mktemp -d)"
+trap 'rm -rf "$FIXTURES"' EXIT
+mkdir -p "$FIXTURES/cifs"
+for i in 1 2 3 4; do : > "$FIXTURES/cifs/framework_$i.cif"; done
+: > "$FIXTURES/cifs/notes.txt"  # must not be counted
+printf 'inputs: %s/cifs\n' "$FIXTURES" > "$FIXTURES/four.yaml"
+printf 'inputs: %s/cifs/framework_1.cif\n' "$FIXTURES" > "$FIXTURES/one.yaml"
+printf 'inputs: ${oc.env:PROJECT_ROOT}/cifs\n' > "$FIXTURES/interp.yaml"
 
 failures=0
 check() {
@@ -48,7 +60,28 @@ unset SMOKE
 smoke_enabled && r=on || r=off
 check "smoke_enabled with SMOKE unset" "off" "$r"
 
+# --- how many inputs does the config name? ------------------------------------
+CONFIG_FILE="$FIXTURES/four.yaml"
+check "four-input arm: counted" "4" "$(count_inputs)"
+CONFIG_FILE="$FIXTURES/one.yaml"
+check "single-input depth probe: counted" "1" "$(count_inputs)"
+CONFIG_FILE="$FIXTURES/interp.yaml"
+check "PROJECT_ROOT is interpolated" "4" "$(PROJECT_ROOT="$FIXTURES" count_inputs)"
+CONFIG_FILE="$FIXTURES/missing.yaml"
+check "unreadable config: unknown" "0" "$(count_inputs)"
+CONFIG_FILE=""
+check "no config file: unknown" "0" "$(count_inputs)"
+
+# The expectation follows the count, so a single-input arm is not failed for producing 3.
+CONFIG_FILE="$FIXTURES/one.yaml"
+build_smoke_args
+check "single-input arm: expectation is 3" "3" "$SMOKE_EXPECTED"
+CONFIG_FILE=""
+build_smoke_args
+check "unknown input count: expect only 'something'" "1" "$SMOKE_EXPECTED"
+
 # --- defaults when the caller passes nothing ----------------------------------
+CONFIG_FILE="$FIXTURES/four.yaml"
 build_smoke_args
 check "no args: replicates" "num_replicates=3" "$(printf '%s\n' "${SMOKE_ARGS[@]}" | grep '^num_replicates=')"
 check "no args: batch size" "batch_size=1" "$(printf '%s\n' "${SMOKE_ARGS[@]}" | grep '^batch_size=')"

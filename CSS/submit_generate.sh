@@ -48,10 +48,23 @@
 # design gets. The configs do not pin one; pass seed=<n> if the draws must be reproducible.
 # SMOKE=1 pins seed=42 for you.
 #
+# The 1000-design depth probes are the same three arms on ONE framework at the high
+# recycling budget, and they take --array because gen_njobs is 10:
+#
+#   V=css_vobarilizumab_1000
+#   for arm in _generate _hotspotadd_generate _hotspotswap_generate; do
+#       NJOBS=10 CONFIG_NAME="$V$arm" sbatch --array=0-9 --job-name="voba$arm" \
+#           --output="slurm_run_outputs/voba${arm}_%A_%a.out" \
+#           --error="slurm_run_outputs/voba${arm}_%A_%a.err" \
+#           CSS/submit_generate.sh
+#   done
+#
 # Size: a plain submission runs the arm as configured -- 100 replicates x 4 inputs = 400
-# designs and 800 AF3 refolds. SMOKE=1 runs stage 1 of CSS/run_smoke.sh instead (3 replicates
-# x 4 inputs = 12 designs, batch size 1, verbose, prevalidated, a fresh out_dir), then gates
-# on the design count and runs CSS/audit_smoke_metrics.py on the result:
+# designs and 800 AF3 refolds for the four-framework arms, or 1000 designs and 2000 refolds
+# for a depth probe. SMOKE=1 runs stage 1 of CSS/run_smoke.sh instead (3 replicates PER
+# INPUT -- 12 designs on a four-framework arm, 3 on a single-input probe -- batch size 1,
+# verbose, prevalidated, a fresh out_dir), then gates on the design count and runs
+# CSS/audit_smoke_metrics.py on the result:
 #
 #   SMOKE=1 CONFIG_NAME="${C}_hotspotadd_generate" sbatch --time=01:00:00 CSS/submit_generate.sh
 #
@@ -158,6 +171,30 @@ has_override() {
     return 1
 }
 
+# How many structure files does this config's `inputs` point at? The smoke expectation is
+# per input, and the arms do not agree on that number: the four-framework configs name a
+# DIRECTORY of 4 CIFs, while the 1000-design depth probes name a SINGLE vobarilizumab CIF.
+# A hardcoded 12 fails a perfectly good single-input smoke run, which is the same false
+# alarm the gate exists to prevent in the other direction. Echoes 0 when the config cannot
+# be read or the path does not resolve, and the caller then only requires "something".
+count_inputs() {
+    local file="${CONFIG_FILE:-}" spec root n=0 p
+    if [ -z "$file" ] || [ ! -f "$file" ]; then echo 0; return; fi
+    root="${PROJECT_ROOT:-$PWD}"
+    spec=$(sed -n 's/^inputs:[[:space:]]*//p' "$file" | head -1 | sed "s|\${oc.env:PROJECT_ROOT}|$root|g")
+    spec=$(printf '%s' "$spec" | sed 's/^"//; s/"$//; s/^'\''//; s/'\''$//')
+    if [ -z "$spec" ]; then echo 0; return; fi
+    if [ -d "$spec" ]; then
+        find "$spec" -maxdepth 1 -type f \( -name '*.cif' -o -name '*.cif.zst' \) | wc -l
+    elif [ -f "$spec" ]; then
+        echo 1
+    else
+        # A glob, or a path this cannot resolve from here.
+        for p in $spec; do [ -e "$p" ] && n=$((n + 1)); done
+        echo "$n"
+    fi
+}
+
 build_smoke_args() {
     # Sets SMOKE_ARGS, SMOKE_OUT_DIR and SMOKE_EXPECTED from the caller's arguments.
     SMOKE_ARGS=()
@@ -169,9 +206,18 @@ build_smoke_args() {
         :
     else
         SMOKE_ARGS+=(num_replicates=3)
-        SMOKE_EXPECTED=12  # 3 replicates x 4 inputs
-        # Under --array the 12 are split across tasks, so one task's share is smaller and an
-        # expectation of 12 would fail every task. Only "something was produced" holds then.
+        # 3 replicates per input: 12 for the four-framework arms, 3 for the single-input
+        # depth probes. Each design writes a design plus two refolds, so counting one file
+        # per design keeps this a lower bound rather than an exact figure.
+        local n_inputs
+        n_inputs=$(count_inputs)
+        if [ "$n_inputs" -gt 0 ]; then
+            SMOKE_EXPECTED=$((3 * n_inputs))
+        else
+            SMOKE_EXPECTED=1
+        fi
+        # Under --array the designs are split across tasks, so one task's share is smaller
+        # and the full expectation would fail every task. Only "something" holds then.
         [ "${NJOBS:-1}" -gt 1 ] && SMOKE_EXPECTED=1
     fi
     has_override batch_size "$@" || SMOKE_ARGS+=(batch_size=1)
