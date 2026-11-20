@@ -1,0 +1,288 @@
+# @package _global_
+#
+# Depth probe at scale: 10,000 designs, vobarilizumab only, 300 trunk passes.
+#
+# A COPY of css_vobarilizumab_1000_generate.yaml with four deltas: num_replicates 1000 ->
+# 10000, out_dir/run_name, and gen_njobs 10 -> 200. Inputs, metrics, pass criteria, checkpoint
+# pair, recycling and compression are byte-identical to that file and, through it, to the
+# 100-design arm -- so all three are directly comparable.
+#
+# Why 10,000 rather than 1,000
+# ----------------------------
+# Measured cost is 29 s/design including refolds: 10,000 designs is ~80 GPU-hours and ~22 GB
+# before compression, against an allocation of 600 hours. Queue latency, not compute, is the
+# binding constraint here -- a submission waits hours regardless of its size -- so a run should
+# carry as much as can usefully be analysed in one go.
+#
+# Detection is what the size buys. A subpopulation is only visible if several designs land in
+# it: 100 designs resolve ~5%, 1,000 resolve ~0.5%, 10,000 resolve ~0.05%. The published rate
+# for hotspot-conditioned binder design is ~1%, so 10,000 either produces ~100 passers or
+# excludes that rate outright. 112 designs so far have produced nothing below 8.96 against a
+# 1.2 gate, but at that size a 1% mode contributes about one design and is indistinguishable
+# from the tail of a unimodal bulk -- which is exactly the ambiguity this run removes.
+#
+# How to read it, in order
+# ------------------------
+#   1. The histogram of oracle_ppi.min_ipae_coi, not the pass rate. A real subpopulation shows
+#      as separated mass at low values; a long tail of the same bulk does not.
+#   2. Counts below 5.0 and below 1.5. This repo's own specificity example
+#      (docs/examples/ppi_specificity_tutorial.ipynb) treats <= 1.5 as "binds" and >= 5.0 as
+#      "does NOT bind" on this exact metric. Every design so far sits past the latter.
+#      Caveat: that example is a PPI receptor binder, not an antibody, and AF3 is documented as
+#      weaker on antibody-antigen interfaces.
+#   3. Published pass fractions (~1% hotspot-conditioned RFdiffusion, 2.3-6.6% AF2-filtered)
+#      are for pae_interaction, an aggregate rather than a minimum. They do not map onto this
+#      threshold and should not be used as a pass/fail expectation.
+#
+# Zero designs below 5.0 in 10,000 is a result. Zero in 100 was not.
+#
+# Practical notes
+# ---------------
+#   * Set TORCH_COMPILE_CACHE_BLOB (see .env.local) before running: at 200 tasks a cold compile
+#     per task is otherwise several GPU-hours of recompiling identical shapes.
+#   * Copy inference_metrics/per_example_metrics.csv off scratch when the run finishes. It is a
+#     few MB, every later analysis reads it, and Delta purges scratch.
+
+defaults:
+  - inference
+  # PPI HIGH preset: 300 total trunk passes over 60 sampling steps
+  # (docs/how-to/run-the-model.md recycling-schedules table).
+  #
+  # This MUST be stated. Without it the composed config resolves
+  # `recycle_strategy: None` and `generation.n_recycle: 0` -- zero recycling -- and the
+  # designs do not dock at all: the 2026-11-04 CSS pilot smoke run produced
+  # oracle_ppi.min_ipae_coi of 10.5-24.9 against a 1.2 gate on 12/12 designs, with
+  # min_ipae.all_metrics_present=1.0 confirming those were real measurements of bad
+  # designs rather than missing columns. inference.yaml's own default
+  # (`recycle_strategy: thinking_medium`) does NOT survive composition into an
+  # inference_experiment config, and `thinking_*` are front-loaded aliases rather than
+  # task-aware defaults in any case. Addressed to the `generation` package, which is
+  # where n_recycle lives -- the same form configs/datasets/val/ppi/*.yaml uses.
+  #
+  # RESOLVED, and this arm is the resolution. The medium config left this open: the
+  # repo's own antibody work picks `high/front_loaded` (300 passes) -- examples/
+  # antibody_design/common.yaml and its README both do -- and said to raise it if the
+  # campaign underperformed, before concluding anything about the frameworks. The
+  # 2026-11-18 medium smoke run did underperform, so this is that escalation. 300 is
+  # also the docs table's PPI High entry, so it is the task's own next step up.
+  - /recycle_strategy@generation: high/front_loaded
+  - _self_
+
+hydra:
+  searchpath:
+    - file://${oc.env:PROJECT_ROOT}/configs
+
+inputs: ${oc.env:PROJECT_ROOT}/CSS/inputs/cifs_L204CD2_L206CD2_Y246CE1/css_VHH_vobarilizumab_cdr123_L204CD2_L206CD2_Y246CE1.cif
+out_dir: ${oc.env:PROJECT_ROOT}/runs/css_vobarilizumab_10000
+run_name: css_vobarilizumab_10000_generate
+
+# Halves the structure footprint. 1000 designs write 3 CIFs each (design + two refolds);
+# at the 100-design run's per-design size that is a few GB uncompressed. Supported IO reads
+# either encoding, and the audit and aggregation scripts are unaffected -- but never rename
+# compressed bytes to .cif.
+compress_outputs: true
+
+# Matches the intended --array=0-199, i.e. 50 designs per task. At the measured 29 s/design
+# that is ~24 min against a 45 min limit, 53% utilisation -- enough margin for the first
+# task paying compile and for node-to-node variance. CSS/submit_generate.sh passes gen_njobs
+# explicitly from NJOBS, which overrides this; it is recorded here so the file states the
+# intended fan-out. NJOBS must equal the array size or the shards overlap.
+gen_njobs: 200
+
+# Checkpoint: inherited from configs/inference.yaml on purpose. It selects the release
+# flow/AE pair from the Hugging Face Hub (`hf_ckpt_path`) at the commit pinned in
+# `hf_ckpt_revision`, so the pair is matched and reproducible, and no DATA_PATH or local
+# checkpoint files are needed. This is the same path the default quickstart example uses.
+#
+# History: this file used to null `hf_ckpt_path` and name native checkpoints under
+# ${DATA_PATH} explicitly, because a native-checkpoint default had moved under the campaign
+# (#792, 2026-10-23). That is only needed on a cluster with the native checkpoints on disk.
+# To go back to native files, set `hf_ckpt_path: null` and name ckpt_path, ckpt_name and
+# autoencoder_ckpt_path together; a half-matched flow/AE pair loads without complaint.
+
+num_replicates: 10000
+batch_size: 2
+
+# --- metrics_tags -----------------------------------------------------------
+# Changed from the 1G8 template's list. Three tags added, one noted as dead.
+#
+# ADDED `antibody`. The template carried `nanobody_geometry` believing it activated
+# cdr_framework_contact_ratio and contact_molecular_surface_proxy. That string is
+# declared by NO metric preset -- it appears nowhere in configs/ or src/ -- and
+# neither of those metric names exists either, so it has always selected nothing and
+# emitted no column. Tag matching runs metric -> tag (metric.py:415 intersects this
+# list against each metric's required_tags_*), and nothing validates the list, so an
+# unknown tag is silently inert. `antibody` is the real tag, and it activates:
+#   - antibody_contacts (AntibodyContacts, contact_threshold 7.0)
+#   - the `antibody` pass criterion (oracle_ppi.min_ipae_coi <= 2.0 and
+#     refolded_target_aligned_binder_rmsd <= 2.0) -- an EXTRA column, more lenient
+#     than this campaign's own min_ipae gate of 1.2; do not confuse the two when
+#     aggregating.
+#   - cdr_torsion_naturalness, but ONLY under
+#     metrics/inline_metrics=all_inline_metrics_with_cdr_torsion (the default
+#     all_inline_metrics excludes it, and its reference data downloads from HF on
+#     first use). Not enabled here.
+# It does not duplicate the oracle: oracle_ppi already accepts `ppi_refolding`.
+#
+# WARNING to verify on the smoke run: the `antibody` pass criterion depends on
+# refolded_target_aligned_binder_rmsd, which this file re-masks onto chain H below
+# precisely because the authored `sa_mask('C_CRD')` form selects 0 atoms on a design
+# output. Check that `antibody.pass` is actually populated and not silently absent.
+#
+# ADDED `3d_coordinate_conditioning` and `internal_coordinate_conditioning`. Together
+# they gate design_motif_allatom_rmsd (design_metrics.yaml:79), which reports
+# per-coordinate-group all-atom RMSD via subdivide_by_annotation on
+# condition_CoordinateGroup_1_atom. On these inputs that is exactly "did the target
+# backbone stay on its absolute coordinates (group 0)" and "did the framework keep its
+# internal geometry (group 1)". Without them this campaign has no metric that says
+# whether conditioning was obeyed at all -- pointed, given the ddG note below
+# complaining that coordinate group 0 must match absolute coordinate conditioning.
+#
+# Both the repo's VHH example campaign (examples/antibody_design/common.yaml) and the
+# nanobody benchmark the model was validated on
+# (configs/datasets/val/antibody/nanobody_design.yaml) use exactly
+#   [design, antibody, 3d_coordinate_conditioning, internal_coordinate_conditioning,
+#    hotspot_conditioning]
+# This list is that set plus the three tags this campaign adds on purpose:
+# `interchain_interactions` (a free column) and the `ppi_refolding`/`apo_refolding`
+# pair that supplies the apo/holo criterion below, which the examples have no
+# equivalent of.
+#
+# `nanobody_geometry` is RETAINED only so the tag list still contains everything the
+# pilot's did; it remains inert and selects nothing. Drop it whenever the byte-identity
+# argument stops mattering. (The 1G8 template's ddG post-mortem claims the smoke-run
+# failure cost "the nanobody_geometry proxies on 12/12 designs" -- that sentence is
+# wrong; there were no such proxies to lose.)
+#
+# `cms` (TorchCMS ContactMolecularSurfaceMetric, preset `contact_molecular_surface`,
+# design_metrics.yaml:98) is deliberately NOT set: on a gpu:small (19.5 GiB) it OOMs
+# against the two AF3 refolds this config runs -- observed 2026-09-03, job 21814978,
+# 10/10 designs failed on that metric alone. It accepts `device: cpu`, which sidesteps
+# the OOM without a gpu:large reservation; left off here to stay comparable.
+metrics_tags: [design, antibody, interchain_interactions,
+               3d_coordinate_conditioning, internal_coordinate_conditioning,
+               ppi_refolding, apo_refolding, nanobody_geometry,
+               hotspot_conditioning]
+
+metrics:
+  # A refold is addressable by its oracle's config key (`oracle_ppi`) and, when it is the only
+  # untransformed refold, by the alias `untransformed`. The explicit key is used here: the alias
+  # is withdrawn if a second untransformed oracle ever becomes active.
+  refolding_metrics:
+    refolded_backbone_rmsd:
+      required_tags_all: ["is_refold:oracle_ppi"]
+    # Target/binder are addressed by chain, not by `sa_mask('C_CRD')`. A design OUTPUT carries
+    # no absolute-coordinate annotation at all: the antigen comes back as CoordinateGroup -1 with
+    # no C_CRD column, so `sa_mask('C_CRD')` selects 0 atoms and the repo's own align masks pick
+    # an empty set. align_structures_with_masks then returns (None, None) *silently* and the
+    # metric emits no column. The binder is always chain H in these frameworks.
+    refolded_target_aligned_binder_rmsd:
+      align_mask: "(chain_id != 'H') & is_protein"
+      subset_mask: "(chain_id == 'H') & is_protein"
+      required_tags_all: ["is_refold:oracle_ppi"]
+    # Required by the repo's `ppi` pass criterion (all_pass_criteria.yaml). Left at its authored
+    # C_CRD-based align mask it never produces a value, and `ppi.pass` is then structurally 0 for
+    # every design regardless of quality.
+    refolded_target_backbone_aligned_binder_rmsd:
+      align_mask: "(chain_id != 'H') & is_protein_backbone"
+      subset_mask: "(chain_id == 'H') & is_protein"
+      required_tags_all: ["is_refold:oracle_ppi"]
+    refolded_apo_holo_rmsd:
+      align_mask: "(chain_id == 'H') & is_protein_backbone"
+      subset_mask: "(chain_id == 'H') & is_protein_backbone"
+      input_kwarg_names:
+        ground_truth_atom_array: refold.oracle_apo.apo
+        predicted_atom_array: refold.oracle_ppi
+      required_tags_all: ["is_refold:oracle_apo.apo", "exists_refold:oracle_ppi"]
+    # NOTE the align mask here still uses sa_mask('C_SEQ') to separate framework from CDRs,
+    # which is the same class of annotation-survival risk the three metrics above were rewritten
+    # to avoid. If C_SEQ does not survive to a design output either, this metric silently emits
+    # nothing and apo_holo_consistency goes indeterminate for every design. VERIFY on the smoke
+    # run that refolded_apo_holo_cdr_rmsd.apo.rmsd is populated before trusting that gate.
+    refolded_apo_holo_cdr_rmsd:
+      _target_: rfproteina.metrics.gt_structure_comparison.StructureComparisonMetric
+      align_mask: "(chain_id == 'H') & is_protein_backbone & sa_mask('C_SEQ')"
+      subset_mask: "(chain_id == 'H') & is_protein_backbone & ~sa_mask('C_SEQ')"
+      metric_type: rmsd
+      aggregation: [median]
+      input_kwarg_names:
+        ground_truth_atom_array: refold.oracle_apo.apo
+        predicted_atom_array: refold.oracle_ppi
+      required_tags_all: ["is_refold:oracle_apo.apo", "exists_refold:oracle_ppi"]
+
+  pre_oracle_filters: null
+
+  # TMol-based interface ddG. `ppi_interface_ddg` (TMolBlockPairMetric) is DELIBERATELY NOT
+  # configured here. On this checkout it fails with
+  #   Coordinate group 0 must match absolute coordinate conditioning; modify C_CRD first.
+  # and a raising inline metric takes EVERY inline metric for that design down with it. On the
+  # 2026-11-04 smoke run that cost `hotspot_obedience` and `interchain_interactions` on 12/12
+  # designs, which in turn left `hotspot_adherence.all_metrics_present = 0` -- the hotspot gate
+  # scoring every design indeterminate rather than pass/fail. ddG feeds no pass criterion, so it
+  # was buying nothing and breaking a gate this campaign actually filters on. Re-add it only
+  # after the C_CRD complaint is understood, and re-smoke the inline metric columns if you do.
+
+  refolding_oracles:
+    # Only the campaign-specific threshold is set here. `_target_`, `oracle_name`,
+    # `template_query`, `aggregation` and `required_tags_any` are inherited from
+    # configs/metrics/refolding_oracles/af3.yaml, which already defines oracle_ppi.
+    oracle_ppi:
+      # Repo default is [1, 1.5, 2]; 1.2 is this campaign's gate. The defaults are kept
+      # alongside it so the ipae distribution is still visible for free.
+      frac_under_thresholds:
+        min_ipae_coi: [1, 1.2, 1.5, 2]
+
+  pass_criteria:
+    min_ipae:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        oracle_ppi.min_ipae_coi:
+          max: 1.2
+      required_tags_any: [ppi_refolding]
+
+    # hotspot_obedience is an inline (design-phase) metric, so its value reaches pass criteria
+    # through the merged design metrics context (metrics_utils.py:306). It inherits
+    # max_hotspot_distance: 4.5 from configs/metrics/inline_metrics/design_metrics.yaml -- an
+    # all-heavy-atom nearest-neighbour criterion between each conditioned target atom and any
+    # binder atom, not a CA-CA distance. The design outputs carry no hydrogens, so all-atom and
+    # heavy-atom coincide.
+    #
+    # This target has 3 hotspots (A/204 LEU CD2, A/206 LEU CD2, A/246 TYR CE1), so min: 1.0
+    # requires all three in contact. Unlike the D166/Q241/Y246 epitope this one is a groove,
+    # not a flat patch: measured on the built inputs, the outward vectors from the antigen
+    # centroid spread 24.9 / 57.7 / 34.5 deg (max 57.7, against 37.5 for D166/Q241/Y246), and
+    # the burial proxy is 78 / 84 / 67 heavy atoms within 8 A (against 34 / 40 / 48). The max
+    # pairwise span is 13.77 A, comfortably inside a VHH paratope's ~20-25 A reach, so the three
+    # atoms are co-reachable -- but expect a lower hotspot pass rate than the polar-triad arm,
+    # and do not read that drop as a framework effect.
+    #
+    # All three atoms were chosen for solvent exposure: 26.9 / 21.4 / 17.7 A^2. The originally
+    # requested CD1/CD1/CZ atoms measure 0.00 / 3.52 / 0.50 A^2 and would have made this gate
+    # structurally unreachable. See REPORT.md.
+    #
+    # Score per-hotspot offline regardless: a pooled obedience average hides WHICH atom a
+    # failing design dropped, and that is the actionable number.
+    hotspot_adherence:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        hotspot_obedience.hotspot_obedience:
+          min: 1.0
+      required_tags_any: [hotspot_conditioning]
+
+    # Apo/holo self-consistency: does the designed binder reach the bound pose on its own?
+    # No repo preset gates this -- all_pass_criteria.yaml has no apo criterion at all -- yet over
+    # 40,000 E270 designs the campaign medians are 4.09 A overall and 5.58 A CDR, and agreement
+    # degrades monotonically with CDR3 length (Spearman +0.31 overall, +0.32 CDR, p ~ 0). Ungated,
+    # the iPAE gate admits designs whose apo prediction misses the holo pose by 6-9 A.
+    # refolded_apo_holo_cdr_rmsd aligns on the framework (sa_mask('C_SEQ')) and measures the
+    # designed loops; refolded_apo_holo_rmsd aligns on the whole binder backbone. The `.apo.`
+    # infix is the refold name (oracle_apo.apo), not an aggregation. 2.0 A is not a knife edge --
+    # the surviving set is identical for any threshold in 1.5-3.0 A.
+    apo_holo_consistency:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        refolded_apo_holo_rmsd.apo.rmsd:
+          max: 2.0
+        refolded_apo_holo_cdr_rmsd.apo.rmsd:
+          max: 2.0
+      required_tags_any: [apo_refolding]
