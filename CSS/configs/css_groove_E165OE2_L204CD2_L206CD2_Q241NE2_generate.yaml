@@ -29,13 +29,16 @@
 # 250 designs PER FRAMEWORK = 1000 total. Confirmed 2026-11-19.
 #
 # At this scale, compare against css_vobarilizumab_1000_generate.yaml -- the other
-# 1000-design run in this campaign. That file additionally sets:
+# 1000-design run in this campaign. That file sets two things the reference config does
+# not, both adopted here on instruction 2026-11-19 (see delta 4 above):
 #     compress_outputs: true     # structure footprint at 1000 designs
 #     gen_njobs: 10              # array fan-out
-# NEITHER is set here, because they were not requested and the reference config does
-# not set them. Both are worth considering before submitting: this run writes 1000
-# uncompressed design structures, and gen_njobs governs how the work splits across
-# the scheduler array.
+# BOTH are set in the body of this file. (An earlier revision of this comment said
+# neither was, which was true only of the first draft; corrected 2026-11-21.)
+# gen_njobs governs how the work splits across the scheduler array, and is honoured by
+# scripts/launch_generate.sh but NOT by CSS/submit_generate.sh, which takes NJOBS from
+# the environment (default 1) and passes it as an explicit override that beats this
+# file. With that launcher, set NJOBS=10 and --array=0-9 together.
 # See scripts/launch_generate.sh and CSS/submit_generate.sh before submission.
 #
 # Reading hotspot_adherence against the previous arm
