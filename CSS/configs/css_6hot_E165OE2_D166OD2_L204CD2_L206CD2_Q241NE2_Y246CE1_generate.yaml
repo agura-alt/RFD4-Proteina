@@ -1,0 +1,160 @@
+# @package _global_
+#
+# "High constraint" arm: 6-hotspot epitope, all four VHH frameworks, 1000 designs.
+#
+# NAME. The colloquial name for this arm is "high constraint", but "high" is already
+# taken in this campaign -- css_cdr123_L204CD2_L206CD2_Y246CE1_high_generate.yaml is the
+# high RECYCLING arm (300 trunk passes), a different axis entirely. This file therefore
+# uses the `css_6hot_` prefix plus the hotspot set, so the two never collide in RUNS.md
+# or in any aggregation keyed on run_name. See the arm's REPORT.md, flag 3.
+#
+# REFERENCE CONFIG: css_groove_E165OE2_L204CD2_L206CD2_Q241NE2_generate.yaml
+# --------------------------------------------------------------------------
+# That file is the direct predecessor: same four frameworks supplied as a directory, same
+# medium/front_loaded recycling, same metrics and pass criteria, same 1000-design scale
+# settings (compress_outputs + gen_njobs), same num_replicates. It was chosen over:
+#   - css_cdr123_L204CD2_L206CD2_Y246CE1_generate.yaml -- the groove arm's own reference,
+#     but it predates the 1000-design scale settings, so referencing it here would
+#     reintroduce the compress_outputs/gen_njobs deltas the groove arm already settled.
+#   - css_cdr123_..._high_generate.yaml      -- high/front_loaded, 25 reps. A budget
+#     escalation, not requested here; AGENTS.md says use the task's MEDIUM preset unless
+#     another budget is asked for, and PPI medium front-loaded is the 120/180/300 schedule.
+#   - css_vobarilizumab_1000_generate.yaml   -- single framework. Wrong shape: this arm
+#     spans all four frameworks.
+#
+# DELTAS vs the reference, and nothing else:
+#   1. inputs           -> the E165OE2_D166OD2_L204CD2_L206CD2_Q241NE2_Y246CE1 directory (4 files)
+#   2. out_dir/run_name -> this arm's own tree
+# compress_outputs, gen_njobs, num_replicates, batch_size, metrics_tags, every metric,
+# pre_oracle_filters, refolding_oracles and all three pass criteria are byte-identical to
+# the reference. The recycling preset is unchanged at medium/front_loaded (180 passes).
+#
+# Design count
+# ------------
+# num_replicates is PER INPUT, and `inputs` is a directory of 4 CIFs, so this is
+# 250 designs PER FRAMEWORK = 1000 total -- matching the groove arm exactly, so the two
+# 6-vs-4 hotspot arms are directly comparable at equal depth. ASSUMPTION: 250 was adopted
+# from the predecessor, not requested for this arm. Change `num_replicates` if a different
+# depth was intended; it is the only lever that needs touching to rescale.
+#
+# hotspot_adherence stays at min: 1.0 -- deliberately, and it is now 6-of-6
+# --------------------------------------------------------------------------
+# `hotspot_obedience >= 1.0` means EVERY hotspot contacted (all-heavy-atom nearest
+# neighbour at 4.5 A, inherited from configs/metrics/inline_metrics/design_metrics.yaml).
+# With six hotspots this is a markedly harder gate than either predecessor's 3-of-3 or
+# 4-of-4, and the epitope is also the widest of the three:
+#
+#     arm                     hotspots   max pairwise span   max angular spread
+#     204/206/246 (template)     3            13.77 A              57.7 deg
+#     165/204/206/241 (groove)   4             8.49 A              28.4 deg
+#     THIS ARM (all six)         6            19.35 A              66.8 deg
+#
+# The widest pair is ASP166 OD2 <-> TYR246 CE1 at 19.35 A. A VHH paratope reaches roughly
+# 20-25 A, so the set is co-reachable in principle, but it sits at the edge of that range
+# and all six must land simultaneously. EXPECT A LOW hotspot_adherence PASS RATE, and do
+# NOT read it as a framework effect or compare it across arms without saying so.
+#
+# It is kept at 1.0 anyway because relaxing it buys nothing that cannot be had offline:
+# `hotspot_obedience.hotspot_obedience` is recorded as a raw fraction on every design
+# regardless of the gate, so a 5-of-6 (0.834) or 4-of-6 (0.667) analysis is a filter over
+# the output table after the fact, while changing the threshold here would make this the
+# only arm in the campaign whose hotspot gate differs. Score PER-HOTSPOT offline in either
+# case -- a pooled obedience average hides WHICH atom a failing design dropped, and with
+# six hotspots that is the only actionable number.
+#
+# TYR 246 is CE1, not the 1G8 control's OH (confirmed 2026-11-21). OH would have made the
+# set tighter -- 17.36 A span, 58.3 deg -- so this gate is about 2 A harder than it had to
+# be. This arm's aromatic contact is therefore not the 1G8 control's, and results should
+# not be read as holding Y246 constant against it. See REPORT.md flags 1 and 2.
+#
+# Before submitting
+# -----------------
+# `gen_njobs: 10` is honoured by scripts/launch_generate.sh, which sizes the SLURM array
+# from the resolved config. It is NOT honoured by CSS/submit_generate.sh, which takes
+# NJOBS from the environment (default 1) and passes it as an explicit gen_njobs= override
+# that BEATS this file. With that launcher, set NJOBS=10 and --array=0-9 together.
+#
+# Verify composition before launching:
+#   PROJECT_ROOT=$PWD python CSS/preflight_metric_selection.py \
+#       css_6hot_E165OE2_D166OD2_L204CD2_L206CD2_Q241NE2_Y246CE1_generate 180
+#
+
+defaults:
+  - inference
+  - /recycle_strategy@generation: medium/front_loaded
+  - _self_
+
+hydra:
+  searchpath:
+    - file://${oc.env:PROJECT_ROOT}/configs
+
+inputs: ${oc.env:PROJECT_ROOT}/CSS/inputs/cifs_E165OE2_D166OD2_L204CD2_L206CD2_Q241NE2_Y246CE1
+out_dir: ${oc.env:PROJECT_ROOT}/runs/css_6hot_E165OE2_D166OD2_L204CD2_L206CD2_Q241NE2_Y246CE1
+run_name: css_6hot_E165OE2_D166OD2_L204CD2_L206CD2_Q241NE2_Y246CE1_generate
+
+compress_outputs: true
+gen_njobs: 10
+
+num_replicates: 250
+batch_size: 2
+
+metrics_tags: [design, antibody, interchain_interactions,
+               3d_coordinate_conditioning, internal_coordinate_conditioning,
+               ppi_refolding, apo_refolding, nanobody_geometry,
+               hotspot_conditioning]
+
+metrics:
+  refolding_metrics:
+    refolded_backbone_rmsd:
+      required_tags_all: ["is_refold:oracle_ppi"]
+    refolded_target_aligned_binder_rmsd:
+      align_mask: "(chain_id != 'H') & is_protein"
+      subset_mask: "(chain_id == 'H') & is_protein"
+      required_tags_all: ["is_refold:oracle_ppi"]
+    refolded_target_backbone_aligned_binder_rmsd:
+      align_mask: "(chain_id != 'H') & is_protein_backbone"
+      subset_mask: "(chain_id == 'H') & is_protein"
+      required_tags_all: ["is_refold:oracle_ppi"]
+    refolded_apo_holo_rmsd:
+      align_mask: "(chain_id == 'H') & is_protein_backbone"
+      subset_mask: "(chain_id == 'H') & is_protein_backbone"
+      input_kwarg_names:
+        ground_truth_atom_array: refold.oracle_apo.apo
+        predicted_atom_array: refold.oracle_ppi
+      required_tags_all: ["is_refold:oracle_apo.apo", "exists_refold:oracle_ppi"]
+    refolded_apo_holo_cdr_rmsd:
+      _target_: rfproteina.metrics.gt_structure_comparison.StructureComparisonMetric
+      align_mask: "(chain_id == 'H') & is_protein_backbone & sa_mask('C_SEQ')"
+      subset_mask: "(chain_id == 'H') & is_protein_backbone & ~sa_mask('C_SEQ')"
+      metric_type: rmsd
+      aggregation: [median]
+      input_kwarg_names:
+        ground_truth_atom_array: refold.oracle_apo.apo
+        predicted_atom_array: refold.oracle_ppi
+      required_tags_all: ["is_refold:oracle_apo.apo", "exists_refold:oracle_ppi"]
+  pre_oracle_filters: null
+  refolding_oracles:
+    oracle_ppi:
+      frac_under_thresholds:
+        min_ipae_coi: [1, 1.2, 1.5, 2]
+  pass_criteria:
+    min_ipae:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        oracle_ppi.min_ipae_coi:
+          max: 1.2
+      required_tags_any: [ppi_refolding]
+    hotspot_adherence:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        hotspot_obedience.hotspot_obedience:
+          min: 1.0
+      required_tags_any: [hotspot_conditioning]
+    apo_holo_consistency:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        refolded_apo_holo_rmsd.apo.rmsd:
+          max: 2.0
+        refolded_apo_holo_cdr_rmsd.apo.rmsd:
+          max: 2.0
+      required_tags_any: [apo_refolding]
