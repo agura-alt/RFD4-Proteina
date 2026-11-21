@@ -19,11 +19,17 @@ if [ -z "$BLOCK" ]; then
     echo "FAIL: could not find the smoke-args markers in $SCRIPT" >&2
     exit 1
 fi
-# The block is pure function definitions; CONFIG_NAME and CONFIG_FILE are the only outside
-# names it reads.
+GUARD="$(sed -n '/^# >>> guards/,/^# <<< guards/p' "$SCRIPT")"
+if [ -z "$GUARD" ]; then
+    echo "FAIL: could not find the guard markers in $SCRIPT" >&2
+    exit 1
+fi
+# Both blocks are pure function definitions. CONFIG_NAME and CONFIG_FILE are the only outside
+# names the smoke block reads; the guard reads NJOBS and the two SLURM_ARRAY_* variables.
 CONFIG_NAME="css_test_arm"
 PWD_SAVED="$PWD"
 eval "$BLOCK"
+eval "$GUARD"
 
 # Fixtures for count_inputs: a four-input arm (a directory of CIFs) and a single-input
 # depth probe. Real files, because count_inputs resolves the path on disk.
@@ -59,6 +65,54 @@ done
 unset SMOKE
 smoke_enabled && r=on || r=off
 check "smoke_enabled with SMOKE unset" "off" "$r"
+
+# --- does --array agree with NJOBS? -------------------------------------------
+# Each case is a submission that Slurm accepts and that exits 0 while generating the wrong
+# set of designs, so the guard's exit status is the whole point. "" means the variable is
+# unset, which is what a non-array submission looks like.
+guard_rc() {
+    (
+        export NJOBS="$1"
+        if [ -n "$2" ]; then export SLURM_ARRAY_TASK_COUNT="$2"; else unset SLURM_ARRAY_TASK_COUNT; fi
+        if [ -n "$3" ]; then export SLURM_ARRAY_TASK_ID="$3"; else unset SLURM_ARRAY_TASK_ID; fi
+        check_array_njobs >/dev/null 2>&1
+        echo $?
+    )
+}
+check "array 10, NJOBS 10: accepted"            "0" "$(guard_rc 10 10 0)"
+check "array 10, NJOBS 1: refused"              "1" "$(guard_rc 1 10 0)"
+check "array 4, NJOBS 10: refused"              "1" "$(guard_rc 10 4 0)"
+check "NJOBS 10, no array at all: refused"      "1" "$(guard_rc 10 "" "")"
+check "NJOBS 1, no array: accepted"             "0" "$(guard_rc 1 "" "")"
+check "NJOBS 1, single-task array: accepted"    "0" "$(guard_rc 1 1 0)"
+check "NJOBS unset defaults to 1: accepted"     "0" "$(NJOBS=1 guard_rc 1 "" "")"
+# The message has to name the fix, since the log is all the user gets back from a dead job.
+msg="$( (export NJOBS=10; unset SLURM_ARRAY_TASK_ID SLURM_ARRAY_TASK_COUNT; check_array_njobs 2>&1 >/dev/null) )"
+case "$msg" in
+    *"--array=0-9"*) check "no-array message names the fix" "yes" "yes" ;;
+    *) check "no-array message names the fix" "yes" "no: $msg" ;;
+esac
+
+# --- was a script setting passed as a Hydra override? -------------------------
+# The 10,000-design probe died this way: CONFIG_NAME after the script name reaches Hydra,
+# which has no such key. A real Hydra override with a similar-looking name must still pass.
+args_rc() { check_env_in_args "$@" >/dev/null 2>&1; echo $?; }
+check "CONFIG_NAME as an override: refused"   "1" "$(args_rc CONFIG_NAME=css_vobarilizumab_10000_generate)"
+check "NJOBS as an override: refused"         "1" "$(args_rc NJOBS=10)"
+check "SMOKE as an override: refused"         "1" "$(args_rc SMOKE=1)"
+check "REPO as an override: refused"          "1" "$(args_rc REPO=/scratch/x)"
+check "refused even when not first"           "1" "$(args_rc num_replicates=4 CONFIG_NAME=x)"
+check "real hydra overrides: accepted"        "0" "$(args_rc num_replicates=4 out_dir=/scratch/x seed=7)"
+check "no arguments at all: accepted"         "0" "$(args_rc)"
+check "config_name lowercase is hydra's"      "0" "$(args_rc config_name=x)"
+check "a key merely containing it: accepted"  "0" "$(args_rc my_CONFIG_NAME=x)"
+# The message must point at the env-prefix form, not at Hydra's '+KEY=' suggestion, which
+# would append the key and silently run the default arm.
+msg="$(check_env_in_args CONFIG_NAME=css_vobarilizumab_10000_generate 2>&1 >/dev/null)"
+case "$msg" in
+    *"BEFORE sbatch"*) check "message points at the env prefix" "yes" "yes" ;;
+    *) check "message points at the env prefix" "yes" "no: $msg" ;;
+esac
 
 # --- how many inputs does the config name? ------------------------------------
 CONFIG_FILE="$FIXTURES/four.yaml"

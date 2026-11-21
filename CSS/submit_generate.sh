@@ -98,6 +98,67 @@ REPO="${REPO:-/u/agurajapu/RFD4-Proteina}"
 CONFIG_NAME="${CONFIG_NAME:-css_cdr123_L204CD2_L206CD2_Y246CE1_high_generate}"
 NJOBS="${NJOBS:-1}"   # must equal the --array size when fanning out
 
+# >>> guards -- extracted and unit-tested by CSS/test_submit_smoke_args.sh
+# job_id and gen_njobs are how a run shards itself: task i generates the i-th of NJOBS
+# slices. If that pair disagrees with the actual --array size, nothing errors -- the run
+# exits 0 having quietly generated the wrong set of designs, which is the hardest kind of
+# failure to notice because the output tree looks ordinary. Both directions are wrong:
+#   * fewer array tasks than NJOBS  -> the missing shards are never generated;
+#   * more array tasks than NJOBS   -> tasks collide on the same shard and redo each other's
+#     work (with skip_existing on, the surplus tasks mostly idle through a GPU reservation);
+#   * NJOBS > 1 with no --array at all -> only shard 0 runs, so (NJOBS-1)/NJOBS of the
+#     designs are silently dropped. This is the one that bites, because the submission
+#     looks complete and the job exits 0.
+# Returns 1 and explains rather than calling exit, so the test can drive it directly.
+check_array_njobs() {
+    local n="${NJOBS:-1}"
+    if [ -n "${SLURM_ARRAY_TASK_COUNT:-}" ] && [ "$SLURM_ARRAY_TASK_COUNT" != "$n" ]; then
+        echo "FAIL: --array has $SLURM_ARRAY_TASK_COUNT task(s) but NJOBS=$n." >&2
+        echo "      They must match: use --array=0-$((n - 1)), or set NJOBS=$SLURM_ARRAY_TASK_COUNT." >&2
+        return 1
+    fi
+    if [ -z "${SLURM_ARRAY_TASK_ID:-}" ] && [ "$n" -gt 1 ]; then
+        echo "FAIL: NJOBS=$n but this is not an array job, so only shard 0 would run and" >&2
+        echo "      $((n - 1))/$n of the designs would never be generated -- with exit 0." >&2
+        echo "      Submit with --array=0-$((n - 1)), or set NJOBS=1." >&2
+        return 1
+    fi
+    return 0
+}
+
+# This script's own settings are ENVIRONMENT variables, read before sbatch ever runs the
+# script. Everything after the script name is a Hydra override forwarded verbatim to
+# rfd4-generate. Writing a setting in the second position looks identical to writing it in
+# the first and is not:
+#
+#   CONFIG_NAME=x sbatch CSS/submit_generate.sh          # selects the arm
+#   sbatch CSS/submit_generate.sh CONFIG_NAME=x          # Hydra: Could not override 'CONFIG_NAME'
+#
+# That is how the 10,000-design probe died (2026-11-19): the default arm was loaded, Hydra
+# was handed a key no config defines, and the job failed after the environment was up. Hydra
+# then suggests `+CONFIG_NAME=...`, which would APPEND the key and run the wrong arm quietly
+# -- the worst available outcome, so this names the real fix instead.
+check_env_in_args() {
+    local arg key rc=0
+    for arg in "$@"; do
+        key="${arg%%=*}"
+        case "$key" in
+            CONFIG_NAME | NJOBS | SMOKE | REPO)
+                echo "FAIL: '$arg' sets this script, not the model, so it must come BEFORE sbatch:" >&2
+                echo "          $key=${arg#*=} sbatch [sbatch options] $0 [hydra overrides]" >&2
+                echo "      Passed after the script name it reaches Hydra as a config key, which" >&2
+                echo "      no config defines. Do NOT take Hydra's '+$key=...' suggestion: that" >&2
+                echo "      appends the key and runs the DEFAULT arm without saying so." >&2
+                rc=1
+                ;;
+        esac
+    done
+    return $rc
+}
+# <<< guards
+check_array_njobs || exit 1
+check_env_in_args "$@" || exit 1
+
 cd "$REPO"
 mkdir -p slurm_run_outputs
 source .venv/bin/activate

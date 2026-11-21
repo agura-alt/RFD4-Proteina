@@ -70,19 +70,11 @@ else
     export NJOBS="${NJOBS:-10}"
 fi
 
-# Catch an array/gen_njobs mismatch here rather than discovering it in the design count. Both
-# directions are silent failures: too few tasks drops designs, too many re-runs the same shard.
-if [ -n "${SLURM_ARRAY_TASK_COUNT:-}" ] && [ "$SLURM_ARRAY_TASK_COUNT" != "$NJOBS" ]; then
-    echo "FAIL: --array has $SLURM_ARRAY_TASK_COUNT task(s) but NJOBS=$NJOBS." >&2
-    echo "      They must match: use --array=0-$((NJOBS - 1)), or set NJOBS=$SLURM_ARRAY_TASK_COUNT." >&2
-    exit 1
-fi
-if [ -z "${SLURM_ARRAY_TASK_ID:-}" ] && [ "$NJOBS" -gt 1 ]; then
-    echo "FAIL: NJOBS=$NJOBS but this is not an array job, so only shard 0 would run and" >&2
-    echo "      $((NJOBS - 1))/$NJOBS of the designs would never be generated -- with exit 0." >&2
-    echo "      Submit with --array=0-$((NJOBS - 1)), or set NJOBS=1." >&2
-    exit 1
-fi
+# The array/gen_njobs mismatch guard that used to live here now lives in submit_generate.sh,
+# between its `# >>> array guard` markers, and runs for both clusters from there. NJOBS is
+# exported above, so the guard sees the Anvil default of 10 rather than the Delta default of
+# 1 -- the defaults stay per-cluster, only the check is shared. CSS/test_submit_smoke_args.sh
+# covers it.
 
 echo "cluster     : anvil (${SLURM_JOB_PARTITION:-?}, account ${SLURM_JOB_ACCOUNT:-?})"
 exec bash "$REPO/CSS/submit_generate.sh" "$@"
