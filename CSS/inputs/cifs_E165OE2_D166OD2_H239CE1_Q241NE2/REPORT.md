@@ -247,5 +247,13 @@ groove and 6hot arms, so all three multi-framework arms sit at equal depth. *Ass
 **ignores `gen_njobs` from the config** and passes its own `NJOBS` (default 1) as an
 explicit override that beats this file, so set `NJOBS=10` and `--array=0-9` together if
 you use that launcher. `scripts/launch_generate.sh` reads it from the resolved config and
-needs no such care. `CSS/submit_generate.sh` also still has uncommitted local
-modifications that were not reviewed as part of this build.
+needs no such care.
+
+`CSS/submit_generate.sh` is the **Delta** submitter (its `#SBATCH` header is Delta's:
+`bjua-delta-gpu` / `gpuA100x4`); `CSS/submit_generate_anvil.sh` wraps it with Anvil's
+header. Both carry the `check_array_njobs` guard that refuses an `--array` / `NJOBS`
+mismatch, so the silent-undergeneration failure described above is now caught at
+submission rather than discovered afterwards. (An earlier revision of this flag, carried
+over from the previous arm's report, said this script had unreviewed uncommitted
+modifications; those were committed in `153cf8c` and the working copy is clean.
+Corrected 2026-11-21.)
