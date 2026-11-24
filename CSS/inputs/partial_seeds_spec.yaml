@@ -38,10 +38,16 @@
 #                  The only design in the campaign passing ppi + antibody + hotspot_adherence.
 #                  Parent tree is on ANVIL; the CIF must be copied to Delta first.
 #   6hot_1p785  -- c95 cluster 8, iPAE 1.785, apo pTM 88, obedience 1.0.
-#   voba_c0     -- c95 cluster 0, vobarilizumab framework. PROVISIONAL: cluster 0's best
-#                  member was rejected on inspection for binding side-on through framework
-#                  rather than CDR contacts. Inspect this one for the same failure before
-#                  submitting, and drop this key if it shows it.
+#   voba_1p27   -- c95 cluster 0, vobarilizumab framework. iPAE 1.27, the campaign's lowest;
+#                  apo pTM 80 and hotspot_obedience 0.5, both the weakest of the three.
+#                  History, so nobody re-derives it: an inspection here on 2026-11-23 read
+#                  this design as binding side-on through framework rather than CDR contacts
+#                  and it was dropped, with css_..._rep15_job17 staged in its place. The
+#                  collaborator reviewed the same structure on 2026-11-24 and judged the CDR
+#                  contact sufficient to proceed. That call stands and this seed is reinstated.
+#                  The obedience of 0.5 is not disputed by either reading -- it reaches half
+#                  the conditioned atoms -- so judge its children against THIS parent, not
+#                  against the two obedience-1.0 seeds.
 
 seed_groove_1p46:
   input: partial_seeds/seed_groove_1p46.cif
@@ -51,6 +57,6 @@ seed_6hot_1p785:
   input: partial_seeds/seed_6hot_1p785.cif
   input_as_annotated_cif: true
 
-seed_voba_c0:
-  input: partial_seeds/seed_voba_c0.cif
+seed_voba_1p27:
+  input: partial_seeds/seed_voba_1p27.cif
   input_as_annotated_cif: true
