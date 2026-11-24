@@ -31,6 +31,12 @@
 #   sbatch CSS/submit_generate.sh num_replicates=1 out_dir=$PWD/runs/submit_test
 #   sbatch --time=12:00:00 CSS/submit_generate.sh        # override a directive
 #
+# Every task also writes its wall clock to slurm_run_outputs/timings/<config>_<jobid>.json
+# (one JSON object per array task, written even when the task fails). To total an arm:
+#   cat slurm_run_outputs/timings/<config>_*.json > timings.jsonl
+# Slurm's own view of the same thing, which this does not replace:
+#   sacct -j <jobid> -X --format=JobID,State,Submit,Start,End,Elapsed,ElapsedRaw
+#
 # Which arm: CONFIG_NAME picks the config in CSS/configs. sbatch exports the submitting
 # environment by default (--export=ALL), so prefixing the variable is enough. The arms write
 # to different out_dirs already, so they do not collide; give each its own job name and log
@@ -93,6 +99,16 @@
 #SBATCH --error=slurm_run_outputs/css_generate_%A_%a.err
 
 set -euo pipefail
+
+# Wall-clock timing. Captured here, before any setup work, so the recorded elapsed covers the
+# whole task -- venv activation, preflight, generation, the smoke gate -- and not just the
+# model call. The matching report is written by timing_report() below, from an EXIT trap, so a
+# task that fails or is killed still records what it spent. CLUSTER_LABEL only names the
+# cluster in that report; it is deliberately NOT called CLUSTER, which generate.py's
+# load_dotenv() reads to pick .env.<name> and which this script unsets further down.
+TIMING_T0="$(date +%s)"
+TIMING_START_ISO="$(date -Is)"
+CLUSTER_LABEL="${CLUSTER_LABEL:-delta}"
 
 REPO="${REPO:-/u/agurajapu/RFD4-Proteina}"
 CONFIG_NAME="${CONFIG_NAME:-css_cdr123_L204CD2_L206CD2_Y246CE1_high_generate}"
@@ -164,6 +180,85 @@ mkdir -p slurm_run_outputs
 source .venv/bin/activate
 export PROJECT_ROOT="$PWD"
 
+# >>> timing report
+# One record per array task, written on exit however the task ends. Two reasons it exists at
+# all: Slurm's accounting database is the only other place this is kept, it is per-cluster, and
+# `sacct -S` has to be aimed at the right window to see anything -- and the campaign's runs are
+# split across Delta and Anvil, so there is no single query that answers "what did this arm
+# cost". The record lands next to the job's .out file, which is already synced with the run.
+#
+# One file per task rather than appends to a shared CSV: ten to two hundred tasks appending
+# concurrently on a parallel filesystem is exactly where interleaved short writes corrupt
+# lines, and a lost timing line is worse than a directory with many small files in it.
+#
+# JSON Lines, so pooling is a cat and reading is one pandas call:
+#   cat slurm_run_outputs/timings/*.json > timings.jsonl
+#   python -c "import pandas;print(pandas.read_json('timings.jsonl',lines=True))"
+TIMING_DIR="$PWD/slurm_run_outputs/timings"
+mkdir -p "$TIMING_DIR"
+
+# Bash substitution rather than a sed pipeline: the escaping needed to make sed escape
+# backslashes is itself the kind of thing that survives review and then quietly emits nothing.
+# $bs is one backslash, built with printf so this file carries no doubled escape of its own.
+json_escape() {
+    local s="${1:-}" bs
+    bs="$(printf '%b' '\0134')"
+    s="${s//$bs/$bs$bs}"
+    s="${s//\"/$bs\"}"
+    printf '%s' "$s"
+}
+
+timing_report() {
+    local status="${1:-0}" t1 elapsed h m s hms file
+    t1="$(date +%s)"
+    elapsed=$((t1 - TIMING_T0))
+    h=$((elapsed / 3600)); m=$(((elapsed % 3600) / 60)); s=$((elapsed % 60))
+    hms="$(printf '%02d:%02d:%02d' "$h" "$m" "$s")"
+
+    # %A_%a when this is an array task, the plain job id otherwise -- the same identity sacct
+    # prints, so the two can be joined on it.
+    local jobid="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-local}}"
+    [ -n "${SLURM_ARRAY_TASK_ID:-}" ] && jobid="${jobid}_${SLURM_ARRAY_TASK_ID}"
+
+    echo
+    echo "############ Wall clock ############"
+    echo "elapsed     : $hms (${elapsed}s), exit status $status"
+    echo "job         : $jobid on ${CLUSTER_LABEL} (${SLURM_JOB_PARTITION:-?})"
+
+    file="$TIMING_DIR/${CONFIG_NAME}_${jobid}.json"
+    {
+        printf '{'
+        printf '"cluster":"%s",'        "$(json_escape "$CLUSTER_LABEL")"
+        printf '"config":"%s",'         "$(json_escape "$CONFIG_NAME")"
+        printf '"job":"%s",'            "$(json_escape "$jobid")"
+        printf '"array_task_id":"%s",'  "$(json_escape "${SLURM_ARRAY_TASK_ID:-}")"
+        printf '"njobs":%s,'            "${NJOBS:-1}"
+        printf '"partition":"%s",'      "$(json_escape "${SLURM_JOB_PARTITION:-}")"
+        printf '"account":"%s",'        "$(json_escape "${SLURM_JOB_ACCOUNT:-}")"
+        printf '"node":"%s",'           "$(json_escape "${SLURM_JOB_NODELIST:-}")"
+        printf '"gpus":"%s",'           "$(json_escape "${SLURM_GPUS_ON_NODE:-${SLURM_JOB_GPUS:-}}")"
+        printf '"smoke":%s,'            "$(case "${SMOKE:-0}" in 1 | true | TRUE | yes | YES) echo true ;; *) echo false ;; esac)"
+        printf '"out_dir":"%s",'        "$(json_escape "${SMOKE_OUT_DIR:-${CONFIG_OUT_DIR:-}}")"
+        printf '"overrides":"%s",'      "$(json_escape "$TIMING_ARGS")"
+        printf '"start":"%s",'          "$(json_escape "$TIMING_START_ISO")"
+        printf '"end":"%s",'            "$(json_escape "$(date -Is)")"
+        printf '"elapsed_s":%s,'        "$elapsed"
+        printf '"elapsed":"%s",'        "$hms"
+        printf '"gpu_hours":%s.%03d,'   "$((elapsed / 3600))" "$(((elapsed % 3600) * 1000 / 3600))"
+        printf '"exit_status":%s'       "$status"
+        printf '}\n'
+    } > "$file"
+    echo "recorded    : $file"
+    :
+}
+
+# `$?` is expanded when the trap fires, not now, so the record carries the real exit status --
+# including the guard failures and the smoke gate's exit 1, which are the runs whose cost is
+# easiest to lose track of.
+TIMING_ARGS="$*"
+trap 'timing_report $?' EXIT
+# <<< timing report
+
 # generate.py calls load_dotenv(), which reads .env.<CLUSTER> and falls back to .env.local.
 # Leaving CLUSTER unset selects .env.local -- the same profile interactive runs use. Setting
 # it to a cluster name would demand .env.<name>, which is how the first batch attempt failed.
@@ -198,6 +293,11 @@ if [ ! -f "$CONFIG_FILE" ]; then
     exit 1
 fi
 
+# Best effort, for the timing record only: the arm's own out_dir, so a recorded run can be
+# matched to the tree it wrote. Empty when the key comes from a composed default rather than
+# this file, and a SMOKE run's fresh directory wins over it.
+CONFIG_OUT_DIR="$(sed -n 's/^out_dir:[[:space:]]*//p' "$CONFIG_FILE" | head -1 \
+    | sed "s|\${oc.env:PROJECT_ROOT}|$PROJECT_ROOT|g; s/^\"//; s/\"$//; s/^'//; s/'$//")"
 # The hotspot-sampling arms instantiate a transform per replicate. Two ways that costs a
 # whole allocation if it is wrong, both caught in seconds here:
 #   * KeepSeedHotspots lives under src/rfproteina/transforms/sampling/, which .gitignore:9

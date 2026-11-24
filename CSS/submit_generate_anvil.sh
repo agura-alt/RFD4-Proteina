@@ -61,6 +61,7 @@
 set -euo pipefail
 
 export REPO="${REPO:-/home/x-agurajapu/RFD4-Proteina}"
+export CLUSTER_LABEL=anvil
 export CONFIG_NAME="${CONFIG_NAME:-css_groove_E165OE2_L204CD2_L206CD2_Q241NE2_generate}"
 
 smoke_enabled() { case "${SMOKE:-0}" in 1 | true | TRUE | yes | YES) return 0 ;; *) return 1 ;; esac; }
@@ -69,6 +70,10 @@ if smoke_enabled; then
 else
     export NJOBS="${NJOBS:-10}"
 fi
+
+# CLUSTER_LABEL only names this cluster in the wall-clock record that submit_generate.sh writes
+# to slurm_run_outputs/timings/; it has no effect on the run. It is the third Anvil-specific
+# thing in this file, after the #SBATCH header and the REPO default.
 
 # The array/gen_njobs mismatch guard that used to live here now lives in submit_generate.sh,
 # between its `# >>> array guard` markers, and runs for both clusters from there. NJOBS is
