@@ -1,0 +1,130 @@
+# @package _global_
+#
+# Partial diffusion around the three seeds selected by the 2026-11-23 triage.
+#
+# REFERENCE CONFIG: css_groove_E165OE2_L204CD2_L206CD2_Q241NE2_generate.yaml
+# -------------------------------------------------------------------------
+# metrics_tags, every metric, pre_oracle_filters, refolding_oracles, all three pass
+# criteria, batch_size and the recycling preset are byte-identical to that file, so these
+# children are measured exactly as their parents were and the numbers are comparable.
+#
+# DELTAS vs the reference, and nothing else:
+#   1. inputs         -> CSS/inputs/partial_seeds_spec.yaml (3 parent complexes, each
+#                        loaded with input_as_annotated_cif: true)
+#   2. out_dir/run_name -> this run's own tree
+#   3. num_replicates -> 250 -> 100  (per input; 3 inputs = 300 children)
+#   4. gen_njobs      -> 10 -> 6
+#
+# The corruption level is NOT set here, on purpose
+# ------------------------------------------------
+# `generation.args.partial_trajectory_fraction_steps` is the one knob that decides what
+# this run means, and nobody knows the right value for this system yet. Pass it on the
+# command line so it appears in the job log and so a sweep does not need a new config:
+#
+#     generation.args.partial_trajectory_fraction_steps=0.3
+#
+# 0.3 reruns the last 30% of the trajectory and stays close to the parent; larger values
+# drift further. The repo's antibody tutorial uses 0.42. Leaving it unset runs ORDINARY
+# FULL GENERATION from these inputs -- a silent and expensive no-op that would look like a
+# successful partial diffusion run. Check the override is present before submitting.
+#
+# NO sampling_transforms, and never add any
+# -----------------------------------------
+# Samplers are instantiated from `generation.dataset.sampling_transforms` in the CONFIG
+# (generate.py:204), not from the input CIF, and they run once per replicate. A partial
+# diffusion run must therefore carry none: `SampleNearbyHotspots` REPLACES the input's
+# C_HOT rather than adding to it, and excludes the seed residues from its own candidate
+# pool (transforms/hotspot_sampling.py:87). Copying this config from
+# css_vobarilizumab_1000_hotspotadd_generate.yaml -- the obvious thing to do for the
+# vobarilizumab seed -- would silently discard each parent's realized hotspot set and
+# give all 100 of its children a different fresh draw, i.e. diffuse around a structure
+# under conditioning other than the one that produced it. Check `--cfg job` for an empty
+# sampling_transforms before every submission.
+#
+# Recycling
+# ---------
+# medium/front_loaded, matching the groove and 6hot parents and AGENTS.md's PPI default.
+# The vobarilizumab parent came from a high/front_loaded arm; its children are therefore
+# run at a lower budget than it was. That is deliberate (medium unless another budget is
+# requested) but it means seed_voba_c0's children are not a like-for-like continuation of
+# their parent arm.
+
+defaults:
+  - inference
+  - /recycle_strategy@generation: medium/front_loaded
+  - _self_
+
+hydra:
+  searchpath:
+    - file://${oc.env:PROJECT_ROOT}/configs
+
+inputs: ${oc.env:PROJECT_ROOT}/CSS/inputs/partial_seeds_spec.yaml
+out_dir: ${oc.env:PROJECT_ROOT}/runs/css_partial_seeds
+run_name: css_partial_seeds_generate
+
+compress_outputs: true
+gen_njobs: 6
+
+num_replicates: 100
+batch_size: 2
+
+metrics_tags: [design, antibody, interchain_interactions,
+               3d_coordinate_conditioning, internal_coordinate_conditioning,
+               ppi_refolding, apo_refolding, nanobody_geometry,
+               hotspot_conditioning]
+
+metrics:
+  refolding_metrics:
+    refolded_backbone_rmsd:
+      required_tags_all: ["is_refold:oracle_ppi"]
+    refolded_target_aligned_binder_rmsd:
+      align_mask: "(chain_id != 'H') & is_protein"
+      subset_mask: "(chain_id == 'H') & is_protein"
+      required_tags_all: ["is_refold:oracle_ppi"]
+    refolded_target_backbone_aligned_binder_rmsd:
+      align_mask: "(chain_id != 'H') & is_protein_backbone"
+      subset_mask: "(chain_id == 'H') & is_protein"
+      required_tags_all: ["is_refold:oracle_ppi"]
+    refolded_apo_holo_rmsd:
+      align_mask: "(chain_id == 'H') & is_protein_backbone"
+      subset_mask: "(chain_id == 'H') & is_protein_backbone"
+      input_kwarg_names:
+        ground_truth_atom_array: refold.oracle_apo.apo
+        predicted_atom_array: refold.oracle_ppi
+      required_tags_all: ["is_refold:oracle_apo.apo", "exists_refold:oracle_ppi"]
+    refolded_apo_holo_cdr_rmsd:
+      _target_: rfproteina.metrics.gt_structure_comparison.StructureComparisonMetric
+      align_mask: "(chain_id == 'H') & is_protein_backbone & sa_mask('C_SEQ')"
+      subset_mask: "(chain_id == 'H') & is_protein_backbone & ~sa_mask('C_SEQ')"
+      metric_type: rmsd
+      aggregation: [median]
+      input_kwarg_names:
+        ground_truth_atom_array: refold.oracle_apo.apo
+        predicted_atom_array: refold.oracle_ppi
+      required_tags_all: ["is_refold:oracle_apo.apo", "exists_refold:oracle_ppi"]
+  pre_oracle_filters: null
+  refolding_oracles:
+    oracle_ppi:
+      frac_under_thresholds:
+        min_ipae_coi: [1, 1.2, 1.5, 2]
+  pass_criteria:
+    min_ipae:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        oracle_ppi.min_ipae_coi:
+          max: 1.2
+      required_tags_any: [ppi_refolding]
+    hotspot_adherence:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        hotspot_obedience.hotspot_obedience:
+          min: 1.0
+      required_tags_any: [hotspot_conditioning]
+    apo_holo_consistency:
+      _target_: rfproteina.metrics.oracles.pass_criterion_metric.PassCriterionMetric
+      metric_thresholds:
+        refolded_apo_holo_rmsd.apo.rmsd:
+          max: 2.0
+        refolded_apo_holo_cdr_rmsd.apo.rmsd:
+          max: 2.0
+      required_tags_any: [apo_refolding]

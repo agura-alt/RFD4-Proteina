@@ -1,0 +1,56 @@
+# Partial diffusion seeds for the CSS VHH campaign.
+#
+# One key per seed. Each `input` is the PARENT'S GENERATED COMPLEX
+# (`*_generated.cif`, the `designed_structure_path` column), never an oracle refold --
+# the refolded structures carry no conditioning and are AF3's opinion, not the model's output.
+#
+# `input_as_annotated_cif: true` is the whole point of this file: it loads each parent's
+# own conditioning as it already stands -- target chain fixed, framework sequence fixed,
+# that parent's own hotspots, that parent's realized CDR lengths -- so children explore
+# around the parent under the conditions that produced it. There is deliberately no
+# `contig` and no `conditions` block: anything stated here would override what the parent
+# carries, which is the opposite of what partial diffusion is for.
+#
+# Consequence worth remembering when the metrics come back: the three parents came from
+# arms with 3, 4 and 6 conditioned hotspot atoms, so `hotspot_obedience` is a fraction over
+# a different denominator for each seed. Compare each child to ITS OWN parent, never across
+# seeds. (Same caveat as the Phase 3 arms -- see RUNS.md.)
+#
+# Relative paths below resolve against THIS FILE's directory, not the working directory.
+#
+# Verified 2026-11-23 that the generated complexes really do round-trip their conditioning:
+# `to_cif_file` defaults to `save_standard_annotations=True`, and loading a parent with
+# `as_annotated_cif=True` returns condition_hotspot_1_atom, condition_coordinate_1_atom,
+# condition_CoordinateGroup_1_atom, condition_InternalCoordinate_1_atom and
+# condition_sequence_1_residue. (Grepping a CIF for `C_HOT` proves nothing -- those are the
+# Python aliases; the serialized columns are the `condition_*` names above.)
+#
+# CHECK THE PRINTED SUMMARY for sequence-probability conditioning. A generated parent also
+# carries condition_sequence-probability-<AA>_1_residue, the design's own per-residue
+# sequence posterior, which the original hand-built inputs do not have. Loaded as a
+# condition it would bias children toward the parent's sequence on top of whatever the
+# corruption level allows -- possibly welcome, possibly a constraint tighter than intended,
+# but not something to discover after 300 designs. The dry run
+# (`prevalidate_inputs=true`) prints what was actually loaded; trust that over this comment.
+#
+# Provenance of the three parents (see RUNS.md, "Triage and structural clustering"):
+#   groove_1p46 -- c95 cluster 1, iPAE 1.46, apo pTM 88, obedience 1.0.
+#                  The only design in the campaign passing ppi + antibody + hotspot_adherence.
+#                  Parent tree is on ANVIL; the CIF must be copied to Delta first.
+#   6hot_1p785  -- c95 cluster 8, iPAE 1.785, apo pTM 88, obedience 1.0.
+#   voba_c0     -- c95 cluster 0, vobarilizumab framework. PROVISIONAL: cluster 0's best
+#                  member was rejected on inspection for binding side-on through framework
+#                  rather than CDR contacts. Inspect this one for the same failure before
+#                  submitting, and drop this key if it shows it.
+
+seed_groove_1p46:
+  input: partial_seeds/seed_groove_1p46.cif
+  input_as_annotated_cif: true
+
+seed_6hot_1p785:
+  input: partial_seeds/seed_6hot_1p785.cif
+  input_as_annotated_cif: true
+
+seed_voba_c0:
+  input: partial_seeds/seed_voba_c0.cif
+  input_as_annotated_cif: true
